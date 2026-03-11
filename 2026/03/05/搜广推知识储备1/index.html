@@ -19,18 +19,21 @@
   <meta name="author" content="fucov">
   <meta name="keywords" content="">
   
-    <meta name="description" content="快速候选召回协同过滤物品协同过滤 itemCF：用户的兴趣具有一定的连贯性，喜欢某个物品的用户往往也会对相似的物品感兴趣。  为每个用户维护一个交互过的物品列表，维护物品共现矩阵，计算物品间相似度($\frac{公共用户}{\sqrt{两个物品交互用户数之积}}$)；  先根据最近交互物品（几百个）生成各自的相似物品（Top-10），然后计算对这些物品各自兴趣强度($相似度\times 兴趣强度$">
+    <meta name="description" content="本文依托FunREC项目展开  快速候选召回协同过滤物品协同过滤 itemCF：用户的兴趣具有一定的连贯性，喜欢某个物品的用户往往也会对相似的物品感兴趣。  为每个用户维护一个交互过的物品列表，维护物品共现矩阵，计算物品间相似度($\frac{公共用户}{\sqrt{两个物品交互用户数之积}}$)；  先根据最近交互物品（几百个）生成各自的相似物品（Top-10），然后计算对这些物品各自兴趣强度">
 <meta property="og:type" content="article">
 <meta property="og:title" content="搜广推实习知识储备Day1">
 <meta property="og:url" content="https://fucov.github.io/2026/03/05/%E6%90%9C%E5%B9%BF%E6%8E%A8%E7%9F%A5%E8%AF%86%E5%82%A8%E5%A4%871/index.html">
 <meta property="og:site_name" content="Hexo">
-<meta property="og:description" content="快速候选召回协同过滤物品协同过滤 itemCF：用户的兴趣具有一定的连贯性，喜欢某个物品的用户往往也会对相似的物品感兴趣。  为每个用户维护一个交互过的物品列表，维护物品共现矩阵，计算物品间相似度($\frac{公共用户}{\sqrt{两个物品交互用户数之积}}$)；  先根据最近交互物品（几百个）生成各自的相似物品（Top-10），然后计算对这些物品各自兴趣强度($相似度\times 兴趣强度$">
+<meta property="og:description" content="本文依托FunREC项目展开  快速候选召回协同过滤物品协同过滤 itemCF：用户的兴趣具有一定的连贯性，喜欢某个物品的用户往往也会对相似的物品感兴趣。  为每个用户维护一个交互过的物品列表，维护物品共现矩阵，计算物品间相似度($\frac{公共用户}{\sqrt{两个物品交互用户数之积}}$)；  先根据最近交互物品（几百个）生成各自的相似物品（Top-10），然后计算对这些物品各自兴趣强度">
 <meta property="og:locale" content="zh_CN">
 <meta property="og:image" content="https://gitee.com/fuoct/myblog/raw/master/mac_img/%E6%88%AA%E5%B1%8F2026-03-05%2018.28.44.png">
 <meta property="og:image" content="https://datawhalechina.github.io/fun-rec/_images/eges_item_graph.png">
 <meta property="og:image" content="https://datawhalechina.github.io/fun-rec/_images/dssm_architecture.svg">
+<meta property="og:image" content="https://datawhalechina.github.io/fun-rec/_images/youtubednn_candidate.png">
+<meta property="og:image" content="https://datawhalechina.github.io/fun-rec/_images/mind_model_architecture.png">
+<meta property="og:image" content="https://datawhalechina.github.io/fun-rec/_images/sdm_model_architecture.png">
 <meta property="article:published_time" content="2026-03-05T00:43:33.000Z">
-<meta property="article:modified_time" content="2026-03-06T16:41:21.998Z">
+<meta property="article:modified_time" content="2026-03-11T16:59:43.886Z">
 <meta property="article:author" content="fucov">
 <meta property="article:tag" content="搜广推">
 <meta property="article:tag" content="深度学习">
@@ -228,7 +231,7 @@
       <span class="post-meta mr-2">
         <i class="iconfont icon-chart"></i>
         
-          3.2k 字
+          6k 字
         
       </span>
     
@@ -239,7 +242,7 @@
         
         
         
-          27 分钟
+          51 分钟
         
       </span>
     
@@ -281,7 +284,10 @@
             
               <div class="markdown-body">
                 
-                <h2 id="快速候选召回"><a href="#快速候选召回" class="headerlink" title="快速候选召回"></a>快速候选召回</h2><h3 id="协同过滤"><a href="#协同过滤" class="headerlink" title="协同过滤"></a>协同过滤</h3><h4 id="物品协同过滤"><a href="#物品协同过滤" class="headerlink" title="物品协同过滤"></a>物品协同过滤</h4><ol>
+                <blockquote>
+<p>本文依托<a target="_blank" rel="noopener" href="https://datawhalechina.github.io/fun-rec/chapter_preface/index.html">FunREC</a>项目展开</p>
+</blockquote>
+<h2 id="快速候选召回"><a href="#快速候选召回" class="headerlink" title="快速候选召回"></a>快速候选召回</h2><h3 id="协同过滤"><a href="#协同过滤" class="headerlink" title="协同过滤"></a>协同过滤</h3><h4 id="物品协同过滤"><a href="#物品协同过滤" class="headerlink" title="物品协同过滤"></a>物品协同过滤</h4><ol>
 <li><p>itemCF：<strong>用户的兴趣具有一定的连贯性，喜欢某个物品的用户往往也会对相似的物品感兴趣</strong>。</p>
 <p> 为每个用户维护一个交互过的物品列表，维护物品共现矩阵，计算物品间相似度($\frac{公共用户}{\sqrt{两个物品交互用户数之积}}$)；</p>
 <p> 先根据最近交互物品（几百个）生成各自的相似物品（Top-10），然后计算对这些物品各自兴趣强度($相似度\times 兴趣强度$)</p>
@@ -292,10 +298,11 @@
 <p><img src="https://gitee.com/fuoct/myblog/raw/master/mac_img/%E6%88%AA%E5%B1%8F2026-03-05%2018.28.44.png" srcset="/img/loading.gif" lazyload alt="Swing示意图"></p>
 </blockquote>
 </li>
-<li><p>Surprise算法(互补商品推荐)：<strong>真正的互补关系主要发生在不同商品类别之间，且购买时间间隔越短，互补性越强</strong></p>
-</li>
 </ol>
 <hr>
+<ol start="3">
+<li>Surprise算法(互补商品推荐)：<strong>真正的互补关系主要发生在不同商品类别之间，且购买时间间隔越短，互补性越强</strong></li>
+</ol>
 <h4 id="用户协同过滤"><a href="#用户协同过滤" class="headerlink" title="用户协同过滤"></a>用户协同过滤</h4><ol>
 <li>UserCF:<strong>具有相似历史行为的用户，未来偏好也相似</strong> 类似ItermCF,计算用户相似度;系统为目标用户找到最相似的K个用户作为“相似用户集合”（通常K&#x3D;50-200）。然后收集这些相似用户交互过的所有物品作为候选集合，并计算目标用户对候选物品的兴趣分数：</li>
 </ol>
@@ -307,14 +314,19 @@
 <li><p>FunkSVD基础模型：把用户-物品评分矩阵($m\times n$)分解为用户矩阵($m \times \mathcal{K}$ )和物品矩阵（$\mathcal{K} \times n$）,$\mathcal{K}$表示因子数量。</p>
 <p> 那么就需要通过 <strong>梯度下降法</strong> $\min \bigg ( \frac{1}{2}\sum\big(评分矩阵_{i,j}-用户矩阵\cdot物品矩阵_{i,j}\big)^2 \bigg)$，通常还会添加L2正则来防止过拟合</p>
 </li>
-<li><p>BiasSVD（去除偏差）: 不同用户的评分习惯差异很大。有些用户天生就是“好人”，很少给低分；有些用户则比较严格，平均分都不高。同样，有些电影因为制作精良或者明星云集，普遍得到较高评分；而有些冷门或质量一般的电影则评分偏低。</p>
-</li>
+</ol>
+<hr>
+<ol start="2">
+<li>BiasSVD（去除偏差）: 不同用户的评分习惯差异很大。有些用户天生就是“好人”，很少给低分；有些用户则比较严格，平均分都不高。同样，有些电影因为制作精良或者明星云集，普遍得到较高评分；而有些冷门或质量一般的电影则评分偏低。</li>
 </ol>
 <h3 id="向量召回"><a href="#向量召回" class="headerlink" title="向量召回"></a>向量召回</h3><h4 id="I2I召回"><a href="#I2I召回" class="headerlink" title="I2I召回"></a>I2I召回</h4><ol>
 <li><p>Word2Vec: Word2Vec主要包含两种模型架构：Skip-Gram和CBOW（Continuous Bag of Words）。Skip-Gram模型通过给定的中心词来预测其周围的上下文词，而CBOW模型则相反，通过上下文词来预测中心词。在推荐系统中，Skip-Gram模型由于其更好的性能表现而被更广泛地采用。</p>
 <p> Skip-Gram模型的目标是最大化其上下文窗口内所有词语的出现概率</p>
 <p> Item2Vec:在推荐系统中，每个用户的交互历史可以看作一个“句子”，其中包含的物品就是“词语”。如果两个物品经常被同一个用户交互，那么它们之间就存在相似性。</p>
 </li>
+</ol>
+<hr>
+<ol start="2">
 <li><p>EGES（Enhanced Graph Embedding with Side Information）：该方法通过两个关键创新来改进传统的序列建模：一是基于会话构建更精细的商品关系图来更好地反映用户行为模式，二是融合商品的辅助信息来解决冷启动问题。</p>
 <ol>
 <li><p>EGES的第一个创新是<strong>将物品序列的概念从简单的用户交互扩展为更精细的会话级序列</strong></p>
@@ -379,6 +391,9 @@
 <li><strong>匹配</strong>：最后只需做简单的内积计算（向量检索），就能从 1 亿人里瞬间揪出最匹配的那几个。</li>
 </ol>
 </li>
+</ol>
+<hr>
+<ol start="2">
 <li><p>DSSM(Deep Structured Semantic Model)：深度结构化语义模型</p>
 <blockquote>
 <p>虽然FM在数学上优雅地实现了向量分解，但它本质上仍是线性模型，对于复杂的非线性用户-物品关系表达能力有限<br><img src="https://datawhalechina.github.io/fun-rec/_images/dssm_architecture.svg" srcset="/img/loading.gif" lazyload alt="DSSM双塔架构"></p>
@@ -417,6 +432,168 @@
 <hr>
 </li>
 <li><p>YouTubeDNN：从匹配到预测用户下一行为</p>
+<blockquote>
+<p>将召回任务重新定义为“预测用户下一个会观看的视频”。<br><img src="https://datawhalechina.github.io/fun-rec/_images/youtubednn_candidate.png" srcset="/img/loading.gif" lazyload alt="YouTubeDNN候选生成模型架构"></p>
+</blockquote>
+<p> YouTubeDNN采用了“非对称”的双塔架构：用户塔集成了观看历史、搜索历史、人口统计学特征等多模态信息，用户观看的视频ID通过嵌入层映射后进行平均池化聚合，模型还引入了“Example Age”特征来建模内容新鲜度的影响；物品塔则相对简化，本质上是一个巨大的嵌入矩阵，每个视频对应一个可学习的向量，避免了复杂的物品特征工程。</p>
+<p> <strong>【严谨解释：YouTubeDNN 与 FM&#x2F;DSSM 的区别】</strong></p>
+<ul>
+<li><p><strong>问题的定义不同</strong>：</p>
+</li>
+<li><p><strong>FM</strong> 是在算“用户和物品对不对付”（二阶特征交叉）。</p>
+</li>
+<li><p><strong>DSSM</strong> 侧重于语义空间的匹配，通常是对称结构（用户和物品都经过深层网络）。</p>
+</li>
+<li><p><strong>YouTubeDNN</strong> 则将推荐看作 <strong>“预测下一个 Token”</strong>。其数学本质是给定用户 $U$ 和上下文 $C$，预测观看视频 $i$ 的概率：<br> $$P(w_t &#x3D; i | U, C) &#x3D; \frac{e^{v_i u}}{\sum_{j \in V} e^{v_j u}}$$</p>
+</li>
+<li><p><strong>架构的“非对称性”</strong>：</p>
+<ul>
+<li><strong>DSSM</strong> 的物品塔往往也是深层的 DNN。</li>
+<li><strong>YouTubeDNN</strong> 采用了<strong>非对称结构</strong>：用户侧（左塔）非常“重”，融合了观看历史、搜索历史、人口统计学特征等多模态信息；而物品侧（右塔）则非常“轻”，本质上是一个巨大的 <strong>Embedding 矩阵</strong>，每个视频 ID 对应一个可学习的向量。</li>
+</ul>
+</li>
+<li><p><strong>特征工程的进化</strong>：</p>
+<ul>
+<li>它引入了 <strong>Example Age</strong>（样本年龄）特征，解决了视频内容更新快、“模型偏向旧视频”的冷启动痛点。</li>
+<li>它使用 <strong>Mean Pooling</strong> 处理变长的用户行为序列，将用户看过的视频 Embedding 取平均作为输入。</li>
+</ul>
+</li>
+</ul>
+<hr>
+<p> <strong>【通俗例子：超市导购的进化】</strong></p>
+<ul>
+<li><strong>FM（传统导购）</strong>：看到你手里拿着咖啡，又看到货架上有砂糖，导购凭借经验告诉你：“咖啡和砂糖很配哦。”（简单的两两关联）。</li>
+<li><strong>DSSM（专业调研员）</strong>：导购先花 10 分钟研究你的背景，再花 10 分钟研究这瓶水的成分，最后看两者的匹配度。（对称的深度理解）。</li>
+<li><strong>YouTubeDNN（超级预言家）</strong>：<ul>
+<li>它不管商品背后复杂的成分，它只关注<strong>你</strong>。它把你过去一年买过的所有东西、搜过的关键词、甚至你的年龄全部塞进脑子里（复杂的用户塔）。</li>
+<li>它在大脑里形成了一个“你最可能买的东西的长相”描述。</li>
+<li>然后它直接转身冲向仓库（Embedding 矩阵），在成千上万个商品里，瞬间揪出那个长得最像你大脑描述的商品。</li>
+<li><strong>关键点</strong>：它还记得“喜新厌旧”。如果两个商品一样好，它会优先把刚进货的新品推给你（Example Age）。</li>
+</ul>
+</li>
+</ul>
+<hr>
+<p> <strong>【核心对比表：快速梳理】</strong></p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>FM（基础款）</th>
+<th>DSSM（对称款）</th>
+<th>YouTubeDNN（工业款）</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>特征交互</strong></td>
+<td>仅限二阶线性交叉</td>
+<td>多层非线性深层交叉</td>
+<td>极其复杂的用户侧特征融合</td>
+</tr>
+<tr>
+<td><strong>物品建模</strong></td>
+<td>隐向量 $v_j$</td>
+<td>深度网络处理后的向量</td>
+<td>简单的 Embedding 查表</td>
+</tr>
+<tr>
+<td><strong>训练目标</strong></td>
+<td>预估点击率 (CTR)</td>
+<td>语义空间相似度</td>
+<td>预测下一个观看视频 ID</td>
+</tr>
+<tr>
+<td><strong>工程技巧</strong></td>
+<td>矩阵分解思想</td>
+<td>负采样优化</td>
+<td><a target="_blank" rel="noopener" href="https://zhuanlan.zhihu.com/p/456088223">负采样</a> + 样本年龄 + 时序分割</td>
+</tr>
+</tbody></table>
+</li>
+</ol>
+<hr>
+<h4 id="序列召回"><a href="#序列召回" class="headerlink" title="序列召回"></a>序列召回</h4><blockquote>
+<p>序列召回就是要利用用户行为的时间顺序信息来进行推荐。它的基本想法是：用户的当前兴趣不仅取决于他过去喜欢什么，还取决于他最近在做什么，以及这些行为的顺序。</p>
+</blockquote>
+<ol>
+<li><p>MIND(Multi-Interest Network with Dynamic Routing):用多个向量捕捉用户的多元兴趣</p>
+<blockquote>
+<p>既然用户有多种兴趣，为什么不用多个向量来分别表示呢？就像给每个兴趣爱好都分配一个专门的“代言人”。<br><img src="https://datawhalechina.github.io/fun-rec/_images/mind_model_architecture.png" srcset="/img/loading.gif" lazyload alt="MIND架构"><br><strong>从整体架构来看，除了常规的Embedding层，MIND模型还包含了两个重要的组件：多兴趣提取层和Label-Aware注意力层。</strong></p>
+</blockquote>
+<p> <strong>【多兴趣提取层：动态路由（Dynamic Routing）】</strong></p>
+<p> <strong>严谨解释：</strong><br> 这一层借鉴了胶囊网络（Capsule Network）的思想，核心是通过<strong>动态路由算法</strong>将用户的历史行为进行“软聚类”。</p>
+<ol>
+<li><strong>特征映射</strong>：利用共享的双线性变换矩阵 $S$ 将用户历史点击的物品 Embedding 映射到统一的兴趣空间。</li>
+<li><strong>迭代聚类</strong>：通过 3 次左右的迭代更新路由系数 $b_{ij}$。在每一轮中，计算物品与各兴趣胶囊的关联度（Softmax），将物品向量加权聚合形成兴趣胶囊 $z_j$，最后使用 <strong>Squash 函数</strong>进行非线性压缩，确保向量模长在 $[0, 1)$ 之间，模长代表该兴趣存在的概率。</li>
+<li><strong>自适应兴趣数</strong>：根据用户历史行为的数量，动态调整生成的兴趣胶囊数量 $K’$，让活跃用户拥有更丰富的兴趣表示。</li>
+</ol>
+<p> <strong>通俗例子：</strong><br> 想象你在整理一个乱七八糟的衣柜（用户的历史行为）。</p>
+<ul>
+<li><strong>传统模型（YouTubeDNN）</strong>：强行把所有衣服塞进一个压缩袋。结果虽然省空间，但西装和泳裤挤在一起，全变形了。</li>
+<li><strong>MIND 的动态路由</strong>：相当于给你几个空的收纳箱（兴趣胶囊）。你拿出一件衣服，看看它更像“正装”还是“运动装”，然后把它放进对应的箱子。经过几次调整，你的衣柜就变成了“正装箱”、“运动箱”和“居家箱”。</li>
+</ul>
+<hr>
+<p> <strong>【Label-Aware 注意力层：标签感知】</strong></p>
+<p> <strong>严谨解释：</strong><br> 在训练阶段，虽然我们提取了多个兴趣向量，但必须确定哪一个兴趣导致了下一次的点击（即 Label），才能进行反向传播。</p>
+<ol>
+<li><strong>目标作为查询（Query）</strong>：将目标商品 $e_i$ 作为查询向量，与用户生成的多个兴趣胶囊 $V_u$ 计算相似度。</li>
+<li><strong>注意力分配</strong>：通过公式 $v_u &#x3D; V_u \cdot \text{Softmax}(\text{pow}(V_u^T e_i, p))$ 选取最相关的兴趣向量。</li>
+<li><strong>参数 $p$ 的作用</strong>：$p$ 是平滑系数。当 $p$ 很大时，模型会呈现“硬注意力”倾向，即几乎只关注最匹配的那一个兴趣，忽略其他干扰，这能显著加快模型收敛。</li>
+</ol>
+<p> <strong>通俗例子：</strong><br> 假设你刚才分好了“正装”、“运动”和“居家”三个收纳箱。</p>
+<ul>
+<li><strong>场景</strong>：现在你实际出门去参加了一场“马拉松”（目标商品&#x2F;Label）。</li>
+<li><strong>注意力选择</strong>：模型会发现你的“马拉松”行为显然和“运动箱”最匹配。于是，它在训练时会重点更新“运动箱”里的参数，而不会去动“正装箱”，因为它知道这次出门跟西装没关系。</li>
+</ul>
+<hr>
+<p> <strong>【总结：MIND 强在哪？】</strong></p>
+<ul>
+<li><strong>从 1 到 N</strong>：它将用户的表达从“一个点”变成了“多个点”，极大提升了召回的覆盖面和准确度。</li>
+<li><strong>线上检索</strong>：在线上服务时，MIND 会将这 $K$ 个兴趣向量分别去向量数据库（如 Faiss）中进行检索，最后把结果汇总，这保证了推荐结果的多样性。</li>
+</ul>
+<p> <strong>既然你已经理解了如何提取多兴趣，需要我为你对比一下 MIND 和阿里后来推出的类似模型（如使用 Self-Attention 的 ComiRec），看看它们在提取多兴趣时有什么不同的“口味”吗？</strong></p>
+</li>
+</ol>
+<hr>
+<ol start="2">
+<li><p>SDM(Sequential Deep Matching model): 融合长短期兴趣，捕捉动态变化</p>
+<blockquote>
+<p>MIND解决了兴趣“广度”的问题，但新的问题随之而来：时间。 用户兴趣不仅是多元的，还是动态演化的。一个用户在一次购物会话（Session）中的行为，往往比他一个月前的行为更能预示他下一刻的需求。MIND虽然能捕捉多个兴趣，但并未在结构上显式地区分它们的时效性。<br><img src="https://datawhalechina.github.io/fun-rec/_images/sdm_model_architecture.png" srcset="/img/loading.gif" lazyload alt="SDM架构"></p>
+</blockquote>
+<p> SDM 的核心贡献在于它不仅区分了长短期兴趣，还通过**门控机制（Gating）**实现了这两者的智能融合，而不是简单的拼接。</p>
+<hr>
+<p> <strong>【1. 短期兴趣提取：捕捉“当下的冲动”】</strong></p>
+<p> <strong>原理：</strong><br> SDM 使用了一个三层结构来处理用户当前的会话序列（Session）：</p>
+<ul>
+<li><strong>LSTM 层</strong>：首先通过 LSTM 学习用户最近点击序列的时序依赖关系。LSTM 的门控机制能有效过滤掉用户偶尔的“手滑”或随机点击带来的噪音。</li>
+<li><strong>多头自注意力层 (Multi-head Self-Attention)</strong>：在时序特征基础上，利用多头机制捕捉兴趣的多样性。每个“头”可以专注于不同的兴趣维度（比如一个头关注品牌，一个头关注价格）。</li>
+<li><strong>个性化注意力层</strong>：最后使用用户画像向量 $e_u$ 作为查询（Query），对多头注意力的输出进行加权聚合，得到最终的短期兴趣表示 $s_t^u$。</li>
+</ul>
+<p> <strong>作用：</strong><br> 精准定位用户<strong>此时此刻</strong>最想买什么，并排除无关干扰。</p>
+<hr>
+<p> <strong>【2. 长期兴趣提取：勾勒“稳定的性格”】</strong></p>
+<p> <strong>原理：</strong><br> 长期行为包含的信息量大但非常杂乱，SDM 采取了“分而治之”的策略：</p>
+<ul>
+<li><strong>多维度聚类</strong>：将用户过去一年的行为按特征子集拆分，如：交互过的商品 ID、子类目、一级类目、店铺、品牌等。</li>
+<li><strong>注意力聚合</strong>：同样利用用户画像向量 $e_u$ 去在这些维度上计算注意力。模型会从不同维度（如“你最喜欢的品牌”或“你最常去的店铺”）去理解你的长期偏好，最终拼接并通过全连接网络得到长期兴趣表示 $p^u$。</li>
+</ul>
+<p> <strong>作用：</strong><br> 捕捉用户<strong>本质上</strong>是一个什么样的人，提供稳定的基准偏好。</p>
+<hr>
+<p> <strong>【3. 长短期融合：智能的“决策阀门”】</strong></p>
+<p> <strong>原理（核心创新）：</strong><br> 简单的拼接或加权求和无法处理长短期兴趣的冲突。SDM 设计了类似 LSTM 的<strong>门控融合机制</strong>：</p>
+<ul>
+<li><strong>门控向量 $G_t^u$</strong>：综合输入用户画像 $e_u$、短期兴趣 $s_t^u$ 和长期兴趣 $p^u$，生成一个 0 到 1 之间的权重向量。</li>
+<li><strong>融合公式</strong>：$o_t^u &#x3D; (1 - G_t^u) \odot p^u + G_t^u \odot s_t^u$。<br> 这意味着，模型可以在每一个特征维度上，自主决定是听“长期的习惯”还是听“短期的冲动”。</li>
+</ul>
+<p> <strong>作用：</strong><br> 解决“推荐结果被近期点击带跑偏”或“推荐结果太保守”的问题。</p>
+<hr>
+<p> <strong>【通俗例子：你去超市买年货】</strong></p>
+<ul>
+<li><strong>长期兴趣 ($p^u$)</strong>：你是个注重健康的人，平时买东西的习惯是“少油少盐”。这是你的<strong>底色</strong>。</li>
+<li><strong>短期兴趣 ($s_t^u$)</strong>：刚才你进店后，连续看了 3 盒不同品牌的巧克力，还看了一箱红酒。这说明你现在的<strong>意图</strong>是“买年货送礼”。</li>
+<li><strong>门控融合 ($G_t^u$)</strong>：</li>
+<li><strong>维度 A（健康）</strong>：门控发现你现在的行为（买巧克力）和长期习惯（健康）冲突。由于你正在选年货，门控会<strong>关小</strong>长期兴趣的阀门，不再推减脂餐给你。</li>
+<li><strong>维度 B（品牌偏好）</strong>：门控发现你虽然在买巧克力，但依然选择了你长期信赖的某个高端品牌。此时门控会<strong>打开</strong>长期兴趣的阀门，利用你对品牌的忠诚度来精准推荐。</li>
+</ul>
 </li>
 </ol>
 
