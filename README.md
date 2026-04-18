@@ -8,7 +8,7 @@ An AstroPaper-based personal blog for Fucov.
 - Adds a homepage intro and featured project cards.
 - Replaces template author information with Fucov's profile.
 - Supports optional Giscus comments on post detail pages only.
-- Supports optional analytics via `Umami`, `Plausible`, or `Google Analytics`.
+- Analytics is disabled by default and optional.
 - Removes runtime dependence on remote Google font metadata for local dev.
 
 ## Local Development
@@ -49,34 +49,6 @@ PUBLIC_GISCUS_LANG=zh-CN
 
 If any required Giscus value is missing, the blog will not render the comment section and the page will still work normally.
 
-### Analytics
-
-Default is disabled:
-
-```bash
-PUBLIC_ANALYTICS_PROVIDER=none
-```
-
-Enable one provider at a time:
-
-```bash
-# Umami
-PUBLIC_ANALYTICS_PROVIDER=umami
-PUBLIC_UMAMI_SCRIPT_SRC=https://umami.example.com/script.js
-PUBLIC_UMAMI_WEBSITE_ID=your-website-id
-
-# Plausible
-PUBLIC_ANALYTICS_PROVIDER=plausible
-PUBLIC_PLAUSIBLE_SCRIPT_SRC=https://plausible.io/js/script.js
-PUBLIC_PLAUSIBLE_DOMAIN=fucov.github.io
-
-# Google Analytics
-PUBLIC_ANALYTICS_PROVIDER=ga
-PUBLIC_GA_MEASUREMENT_ID=G-XXXXXXXXXX
-```
-
-If the selected provider is missing required values, no analytics script will be injected.
-
 ## Required Manual Setup
 
 ### Giscus GitHub Setup
@@ -87,16 +59,10 @@ If the selected provider is missing required values, no analytics script will be
 4. Copy the generated `repoId` and `categoryId` from the Giscus configuration page.
 5. Put those values into `.env`.
 
-### Analytics Setup
-
-1. Choose one provider.
-2. Fill the matching environment variables from the section above.
-3. Restart `pnpm dev` after changing `.env`.
-
 ## Content And Images
 
 - Homepage hero and featured project covers use Astro's native image pipeline.
-- Existing markdown posts are left unchanged to avoid a large content rewrite.
+- Existing markdown posts can be added under `src/data/blog/`.
 - For future posts, prefer importing local images from `src/assets/images` and using Astro image syntax where practical. That gives better dimensions, smaller layout shift, and responsive output.
 
 ## Markdown And LaTeX
@@ -139,5 +105,5 @@ Notes:
 ## Notes
 
 - Current Astro version stays on Astro 5. No major upgrade was introduced.
-- The site now uses a system font stack instead of remote Google font metadata.
+- The site uses a system font stack instead of remote Google font metadata.
 - Dynamic OG image generation remains available without remote font fetching.

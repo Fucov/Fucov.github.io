@@ -1,8 +1,9 @@
 import type { CollectionEntry } from "astro:content";
+import filterRealPosts from "./filterRealPosts";
 import postFilter from "./postFilter";
 
 const getSortedPosts = (posts: CollectionEntry<"blog">[]) => {
-  return posts
+  return filterRealPosts(posts)
     .filter(postFilter)
     .sort(
       (a, b) =>
