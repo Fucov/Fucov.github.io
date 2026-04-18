@@ -1,0 +1,68 @@
+---
+import { Image } from "astro:assets";
+import pancliImage from "@/assets/images/project-pancli.png";
+import traceImage from "@/assets/images/project-trace.png";
+import IconGitHub from "@/assets/icons/IconGitHub.svg";
+import LinkButton from "./LinkButton.astro";
+
+const projects = [
+  {
+    name: "PanCLI",
+    description: "A personal open-source project.",
+    href: "https://github.com/Fucov/PanCLI",
+    image: pancliImage,
+    alt: "PanCLI project card cover",
+  },
+  {
+    name: "Trace",
+    description: "An open-source project by Fucov.",
+    href: "https://github.com/Fucov/Trace",
+    image: traceImage,
+    alt: "Trace project card cover",
+  },
+];
+---
+
+<section id="featured-projects" class="border-b border-border py-10 sm:py-12">
+  <div>
+    <p class="text-sm tracking-[0.18em] text-foreground/65 uppercase">
+      Selected Work
+    </p>
+    <h2 class="mt-2 text-2xl font-semibold tracking-tight">
+      Featured Projects
+    </h2>
+  </div>
+
+  <div class="mt-6 grid gap-5 md:grid-cols-2">
+    {
+      projects.map(project => (
+        <article class="overflow-hidden rounded-2xl border border-border bg-background">
+          <Image
+            src={project.image}
+            alt={project.alt}
+            widths={[480, 720]}
+            sizes="(min-width: 768px) 24rem, 100vw"
+            loading="lazy"
+            class="h-auto w-full border-b border-border"
+          />
+          <div class="p-5">
+            <h3 class="text-xl font-medium">{project.name}</h3>
+            <p class="mt-2 text-sm leading-6 text-foreground/75">
+              {project.description}
+            </p>
+            <div class="mt-4">
+              <LinkButton
+                href={project.href}
+                class="rounded-full border border-border px-4 py-2 text-sm font-medium hover:border-accent"
+                title={`${project.name} repository`}
+              >
+                <IconGitHub class="size-4 stroke-current" />
+                <span>GitHub</span>
+              </LinkButton>
+            </div>
+          </div>
+        </article>
+      ))
+    }
+  </div>
+</section>
