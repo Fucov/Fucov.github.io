@@ -1,0 +1,24 @@
+---
+import { getCollection } from "astro:content";
+import Layout from "@/layouts/Layout.astro";
+import Header from "@/components/Header.astro";
+import Footer from "@/components/Footer.astro";
+import Main from "@/layouts/Main.astro";
+import getSortedPosts from "@/utils/getSortedPosts";
+const posts = getSortedPosts((await getCollection("blog")).filter(p => p.data.tags.includes("learning-daily")));
+---
+<Layout title="每日前沿" description="每日研究动态与技术进展，持续追踪值得关注的新工作。">
+  <Header />
+  <Main pageTitle="每日前沿" pageDesc="追踪新工作，连接新进展。按日期积累，随研究方向拓展。">
+    <p class="mb-6">本期归档：2026-10-02 — 2026-10-08 · 7 份完整 HTML 报告 · 北京时间</p>
+    <ul>{posts.map(post => {
+      const date = post.id.match(/\d{4}-\d{2}-\d{2}/)?.[0];
+      return <li class="my-6 rounded-lg border border-border p-5">
+        <a class="text-xl font-semibold text-accent" href={`/frontier/${date}.html`}>{post.data.title} →</a>
+        <p class="mt-3">{post.data.description}</p>
+        <p class="mt-3 text-sm opacity-70">完整报告 · 摘要与翻译 / 评分 / 实验 / 局限 / 相关工作</p>
+      </li>;
+    })}</ul>
+  </Main>
+  <Footer />
+</Layout>
