@@ -108,9 +108,9 @@ hideEditPost: true
 
 TEMPO 把每个 GPU 的估计时间近似写成：
 
-$
+$$
 \widehat{T}_g = \max(a+bG_g,\;c+\beta N_g).
-$
+$$
 
 - `G_g`：GPU `g` 本步激活的物理专家副本数；
 - `N_g`：它需要处理的 Token 总数；
@@ -189,11 +189,11 @@ GPU1:  20 →  20 + Δ
 
 因此一次成对松弛的核心操作可以写成：
 
-$
+$$
 \Delta = \min\left(\left\lfloor
 \frac{|L_u-L_v|}{2}\right\rfloor,
 \mathrm{MovableTokens}(e,u,v)\right).
-$
+$$
 
 这只需要整数减法、比较、右移（折半）和更新两个计数器。下一轮其他边更新后，负载方向也可能反转，所以允许双向转移。
 
@@ -211,11 +211,11 @@ $
 
 Relief 因此关心一个更务实的指标：
 
-$
+$$
 U_\text{effective}
 = U_\text{spatial}\cdot
 \frac{T_\text{MoE}}{T_\text{solve}+T_\text{MoE}}.
-$
+$$
 
 如果为了把 GPU 利用率从 80% 提高到 90%，额外付出了很长的 Solver 延迟，有效利用率反而可能下降。
 
@@ -278,9 +278,9 @@ TEMPO 和 Relief 可以把 Token 重新分给**已有副本**，但如果热点�
 
 一个专家 FFN 可以粗略表示为：
 
-$
+$$
 Z = X W_1,\qquad H = \sigma(Z),\qquad Y = H W_2.
-$
+$$
 
 执行第一段 FC1 只需要 `X` 和 `W1`；第二段 FC2 才需要 `W2`。
 
