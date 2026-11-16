@@ -83,7 +83,8 @@ const nextPost =
   <BackButton />
   <main
     id="main-content"
-    class:list={["app-layout article-layout pb-12", { "mt-8": !SITE.showBackButton }]}
+    class:list={["article-layout mx-auto w-full pb-12", { "mt-8": !SITE.showBackButton }]}
+    style="width: 100%; max-width: min(96vw, 1480px);"
     data-pagefind-body
   >
     <h1
@@ -106,6 +107,7 @@ const nextPost =
     <article
       id="article"
       class="app-prose mt-8 w-full max-w-none prose-pre:bg-(--shiki-light-bg) dark:prose-pre:bg-(--shiki-dark-bg)"
+      style="width: 100%; max-width: none;"
     >
       <Content />
     </article>
