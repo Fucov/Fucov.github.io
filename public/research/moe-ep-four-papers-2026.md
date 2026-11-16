@@ -1,9 +1,4 @@
-# MoE 推理系统研究：MoE 推理系统研究：问题、算法与下一步研究机会
-
-> **版本**：2026-11-17 · v0.4  
-> **范围**：MoE Expert Parallelism（EP），重点讨论 Prefill / Decode、Token 分配、动态专家复制与通信计算重叠。  
-> **阅读方式**：先理解 MoE 的共性瓶颈，再依次阅读四篇论文，每篇按“背景/问题定义 → 算法 → Insight → 解决机制 → 局限/潜在研究方向”展开。
-> **学术说明**：实验数据为论文作者报告，不代表本文复现；标注“作者说明”的是论文原文限制，标注“我的判断”的是进一步研究推断。自定义的小例子用于理解算法，不等于原论文实验。
+# MoE 推理系统研究：问题、算法与下一步研究机会
 
 ## 0. MoE 推理研究现状：共同问题在哪里？
 
@@ -90,21 +85,21 @@
 
 ### 1.3 核心 Insight：为什么旧方法在这里失效
 
-> **待补论文原图**：TEMPO Figure 1：为什么 Token 均衡不等于执行时间均衡。请将你手动裁切的原图保存为 `tempo_fig1.png`，上传至 `public/research/moe-paper-figures/`，审核后可恢复本处图片嵌入。
+![TEMPO Figure 1：为什么 Token 均衡不等于执行时间均衡](/research/moe-paper-figures/tempo_fig1.png)
 
-*作者原图：TEMPO Figure 1。重点观察小 Token 区的固定代价，以及 Token-LP 与实际耗时最优的差异。[原论文](https://arxiv.org/abs/2608.13057)。*
+**图 1｜Token 分得一样多，不代表 GPU 用时一样长。** 左图：单个专家的 Token 较少时，执行时间几乎不变；超过约 156 个 Token 后，时间才随计算量明显增长。右图：针对同一批请求，按 Token 数平分的方案反而比 TEMPO 的时间感知分配更慢。
 
-> **待补论文原图**：TEMPO Figure 2：不同专家形状下的实测成本曲线。请将你手动裁切的原图保存为 `tempo_fig2.png`，上传至 `public/research/moe-paper-figures/`，审核后可恢复本处图片嵌入。
+![TEMPO Figure 2：不同专家形状下的实测成本曲线](/research/moe-paper-figures/tempo_fig2.png)
 
-*作者原图：TEMPO Figure 2。不同 Expert Shape 下，Token 数—执行时间并非同一条直线。[原论文](https://arxiv.org/abs/2608.13057)。*
+**图 2｜专家计算存在“固定开销区”和“计算增长区”。** 左图：每个专家的执行时间先接近水平线，Token 足够多后才上升。右图：不同模型形状的转折点并不相同，所以调度器需要针对模型和 GPU 测量成本，不能使用一个通用的 Token 阈值。
 
 **为什么？** 每激活一个物理 Expert，就可能要从 HBM 读一次权重。冷专家仅有少量 Token 时，多复制一个执行位置通常意味着多支付一份固定读权重开销；热专家有大量 Token 时，更可能受 GEMM 计算量约束。
 
 TEMPO 把每个 GPU 的估计时间近似写成：
 
-\[
+$
 \widehat{T}_g = \max(a+bG_g,\;c+\beta N_g).
-\]
+$
 
 - `G_g`：GPU `g` 本步激活的物理专家副本数；
 - `N_g`：它需要处理的 Token 总数；
@@ -179,17 +174,17 @@ GPU1:  20 →  20 + Δ
 
 因此一次成对松弛的核心操作可以写成：
 
-\[
+$
 \Delta = \min\left(\left\lfloor
 \frac{|L_u-L_v|}{2}\right\rfloor,
 \mathrm{MovableTokens}(e,u,v)\right).
-\]
+$
 
 这只需要整数减法、比较、右移（折半）和更新两个计数器。下一轮其他边更新后，负载方向也可能反转，所以允许双向转移。
 
-> **待补论文原图**：Relief Figure 5：成对松弛、边着色和并行更新。请将你手动裁切的原图保存为 `relief_fig5.png`，上传至 `public/research/moe-paper-figures/`，审核后可恢复本处图片嵌入。
+![Relief Figure 5：成对松弛、边着色和并行更新](/research/moe-paper-figures/relief_fig5.png)
 
-*作者原图：Relief Figure 5。重点阅读 **同一轮不能让两条边同时更新同一个 GPU**，因此用 Edge Coloring 把无冲突的边放到同一 Parallel Round。[原论文](https://arxiv.org/abs/2611.11402)。*
+**图 4｜Relief 怎样把负载差转成可以并行执行的搬运操作。** 左边是本层各 GPU 的初始负载；中间依次列出从重载卡转到轻载卡的专家 Token 搬运计划；右边是在这些计划执行后，各 GPU 的负载更接近。不同轮次处理互不冲突的 GPU 对，减少同步冲突。
 
 ### 2.3 核心 Insight：为什么旧方法在这里失效
 
@@ -201,11 +196,11 @@ GPU1:  20 →  20 + Δ
 
 Relief 因此关心一个更务实的指标：
 
-\[
+$
 U_\text{effective}
 = U_\text{spatial}\cdot
 \frac{T_\text{MoE}}{T_\text{solve}+T_\text{MoE}}.
-\]
+$
 
 如果为了把 GPU 利用率从 80% 提高到 90%，额外付出了很长的 Solver 延迟，有效利用率反而可能下降。
 
@@ -268,15 +263,15 @@ TEMPO 和 Relief 可以把 Token 重新分给**已有副本**，但如果热点�
 
 一个专家 FFN 可以粗略表示为：
 
-\[
+$
 Z = X W_1,\qquad H = \sigma(Z),\qquad Y = H W_2.
-\]
+$
 
 执行第一段 FC1 只需要 `X` 和 `W1`；第二段 FC2 才需要 `W2`。
 
-> **待补论文原图**：MegaFlux Figure 2：热点专家复制及 FC1/FC2 流水线。请将你手动裁切的原图保存为 `megaflux_fig2.png`，上传至 `public/research/moe-paper-figures/`，审核后可恢复本处图片嵌入。
+![MegaFlux Figure 2：热点专家复制及 FC1/FC2 流水线](/research/moe-paper-figures/megaflux_fig2.png)
 
-*作者原图：MegaFlux Figure 2。看图时重点追踪**W1 已到 → 运行 FC1，同时 W2 继续传输 → FC2 开始**的依赖关系；右侧还有训练 Backward 的梯度流水。[原论文](https://arxiv.org/abs/2610.00671)。*
+**图 5｜专家权重的复制可以和专家计算同时进行。** 左侧比较固定放置与 MegaFlux：固定放置的热点 GPU 很忙、另一块 GPU 空闲；MegaFlux 把部分 Token 和专家权重搬到空闲 GPU，并让先到达的权重立即参与计算。右侧说明训练时梯度归并也能与其他计算重叠。
 
 常规动态复制很容易写成：
 
@@ -346,9 +341,9 @@ for expert_tile in persistent_executor(plan):
 
 ### 4.3 核心 Insight：为什么旧方法在这里失效
 
-> **待补论文原图**：OverlapAdvisor Figure 2：不同平台与负载下，最优 Overlap 策略会变化。请将你手动裁切的原图保存为 `overlap_fig2.png`，上传至 `public/research/moe-paper-figures/`，审核后可恢复本处图片嵌入。
+![OverlapAdvisor Figure 2：不同平台与负载下，最优 Overlap 策略会变化](/research/moe-paper-figures/overlap_fig2.png)
 
-*作者原图：OverlapAdvisor Figure 2。重点看各配置的赢家不同；它正是“固定唯一重叠方案不够”的证据。[原论文](https://arxiv.org/abs/2611.11857)。*
+**图 6｜没有一种通信—计算重叠策略在所有情况下都最快。** 四个子图对应不同 GPU、模型及精度配置；横轴是处理的 Token 数，纵轴为相对最佳策略的性能（最佳为 100%）。不同颜色分别代表不同执行方案，最佳方案会随硬件和负载变化。
 
 考虑通信需要 80 μs、计算需要 100 μs：
 
@@ -362,9 +357,9 @@ for expert_tile in persistent_executor(plan):
 
 ### 4.4 算法如何对应问题：逐步解决什么
 
-> **待补论文原图**：OverlapAdvisor Figure 3：性能预测、策略适配与服务启动。请将你手动裁切的原图保存为 `overlap_fig3.png`，上传至 `public/research/moe-paper-figures/`，审核后可恢复本处图片嵌入。
+![OverlapAdvisor Figure 3：性能预测、策略适配与服务启动](/research/moe-paper-figures/overlap_fig3.png)
 
-*作者原图：OverlapAdvisor Figure 3。按 **UPP → CSA → SSL** 阅读模块功能。[原论文](https://arxiv.org/abs/2611.11857)。*
+**图 7｜OverlapAdvisor 的完整决策流程。** 左侧输入模型、Token 数、GPU 与 EP 配置；中间先估算候选方案的通信和计算耗时，再挑选适合当前配置的执行策略；右侧将该策略交给 SGLang/vLLM 启动运行，并分析最终吞吐和延迟。
 
 **UPP（Unified Performance Predictor）**：建立分阶段性能模型，估计 Dispatch+Compute、Compute+Combine 等关键路径，结合少量真实测量校准有效带宽、GEMM 效率和同步开销。
 
@@ -441,23 +436,4 @@ start_serving_engine(backend=min(predicted, key=predicted.get))
 | 调度器 | Planner Latency、Staleness、CUDA Graph 兼容性 | 防止优化成本吃掉收益 |
 | 端到端 | Prefill TTFT、Decode TPOT、P95/P99、Tokens/s | 验证优化不是局部幻象 |
 
-**建议暂缓论文承诺的情况**：基准方法已接近硬件 Oracle；未发生稳定的真实耗时失衡；Planner 开销不可控；跨模型结论相互矛盾且无法解释。
 
----
-
-## 6. 进一步阅读
-
-- DeepSeek-AI, [DeepEP](https://github.com/deepseek-ai/DeepEP)、[EPLB](https://github.com/deepseek-ai/EPLB)、[LPLB](https://github.com/deepseek-ai/LPLB)：通信协议、慢速放置与 Token 分配基线。
-- SGLang, [Waterfill & LPLB 工程说明](https://www.lmsys.org/blog/2026-06-26-waterfill-lplb)：现有生产级 EP 负载均衡实现和效果。
-- NVIDIA, [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM)：不同 MoE Kernel 和通信路径的公共实现。
-- TEMPO、Relief、MegaFlux、OverlapAdvisor 的原文 PDF 已在各节开头链接。
-
-### 图片上传与引用说明
-
-已停止自动裁切和提取流程，避免覆盖手工整理的图片。当前正文使用“待补论文原图”占位文本而非失效的图片组件；**上传图片本身不会自动把占位变成图片**，还需要将对应占位行替换为 Markdown 图片语法：
-
-```md
-![论文 Figure 与用途说明](/research/moe-paper-figures/tempo_fig1.png)
-```
-
-图片请保存到仓库 `public/research/moe-paper-figures/`，文件名沿用占位提示（`tempo_fig1.png` 等）。上传后图片公开访问地址为 `https://fucov.github.io/research/moe-paper-figures/文件名`。请保留原论文 Figure 编号、来源和版权署名。
