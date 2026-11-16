@@ -36,6 +36,7 @@ def html_figures(arxiv, indices):
     url="https://arxiv.org/html/"+arxiv
     r=grab(url)
     soup=BeautifulSoup(r.text,"html.parser")
+    print("[DEBUG HTML]",arxiv,r.status_code,r.url,"figures",len(soup.select("figure, .ltx_figure")),"title",(soup.title.get_text(" ",strip=True) if soup.title else "")[:150],flush=True)
     output={}
     for n in indices:
         figure=None
@@ -83,9 +84,11 @@ def pdf_figures(arxiv,indices):
     """Fallback: crop the *actual PDF rendering* immediately above the figure caption."""
     raw=grab("https://arxiv.org/pdf/"+arxiv.split("v")[0]).content
     doc=fitz.open(stream=raw,filetype="pdf")
+    print("[DEBUG PDF]",arxiv,"size",len(raw),"pages",len(doc),flush=True)
     result={}
     for page in doc:
         blocks=sorted([b for b in page.get_text("blocks") if isinstance(b[4],str)],key=lambda b:(b[1],b[0]))
+        print("[DEBUG PDF page]",arxiv,page.number+1,"captions",[b[4][:110].replace("\\n"," ") for b in blocks if re.search(r"\\b(?:Fig(?:ure)?[.]?)[ ]*[1-9]",b[4],re.I)][:5],flush=True)
         for n in indices:
             if n in result: continue
             for b in blocks:
