@@ -42,12 +42,12 @@ def html_figures(arxiv, indices):
         figure=None
         for f in soup.select("figure, .ltx_figure"):
             fid=(f.get("id") or "").lower()
-            if re.search(r"\\.f"+str(n)+r"$",fid):
+            if re.search(r"\.f"+str(n)+r"$",fid):
                 figure=f;break
         if figure is None:
             for f in soup.select("figure, .ltx_figure"):
                 c=f.select_one("figcaption, .ltx_caption")
-                if c and re.search(r"\\b(?:Figure|Fig\\.)\\s*"+str(n)+r"\\b",c.get_text(" ",strip=True),flags=re.I):
+                if c and re.search(r"\b(?:Figure|Fig\.)\s*"+str(n)+r"\b",c.get_text(" ",strip=True),flags=re.I):
                     figure=f;break
         if figure is None: continue
         urls=[]
@@ -88,12 +88,12 @@ def pdf_figures(arxiv,indices):
     result={}
     for page in doc:
         blocks=sorted([b for b in page.get_text("blocks") if isinstance(b[4],str)],key=lambda b:(b[1],b[0]))
-        print("[DEBUG PDF page]",arxiv,page.number+1,"captions",[b[4][:110].replace("\\n"," ") for b in blocks if re.search(r"\\b(?:Fig(?:ure)?[.]?)[ ]*[1-9]",b[4],re.I)][:5],flush=True)
+        print("[DEBUG PDF page]",arxiv,page.number+1,"captions",[b[4][:110].replace("\n"," ") for b in blocks if re.search(r"\b(?:Fig(?:ure)?[.]?)[ ]*[1-9]",b[4],re.I)][:5],flush=True)
         for n in indices:
             if n in result: continue
             for b in blocks:
                 t=" ".join(b[4].split())
-                if not re.search(r"^(Figure|Fig\\.)\\s*"+str(n)+r"\\s*[.:]",t,re.I):continue
+                if not re.search(r"^(Figure|Fig\.)\s*"+str(n)+r"\s*[.:]",t,re.I):continue
                 # Remove caption; keep artwork above it, limited to column-width/page.
                 caption_top=float(b[1])
                 x0=max(0,float(b[0])-8); x1=min(page.rect.width,float(b[2])+8)
