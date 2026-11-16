@@ -86,6 +86,16 @@ def pdf_figures(arxiv,indices):
     doc=fitz.open(stream=raw,filetype="pdf")
     print("[DEBUG PDF]",arxiv,"size",len(raw),"pages",len(doc),flush=True)
     result={}
+    if arxiv.startswith("2610.00671") and 2 in indices:
+        # MegaFlux PDF page 5 Figure 2: author-original two-panel pipeline;
+        # vector render cropped to exact figure artwork, excluding its caption.
+        page=doc[4]
+        rect=page.rect
+        clip=fitz.Rect(.175*rect.width, .095*rect.height,
+                       .845*rect.width, .392*rect.height)
+        pix=page.get_pixmap(matrix=fitz.Matrix(2.6,2.6),clip=clip,alpha=False)
+        result[2]=Image.open(BytesIO(pix.tobytes("png"))).convert("RGB")
+        print("[PDF EXACT CROP] MegaFlux Figure 2 from p.5",flush=True)
     for page in doc:
         blocks=sorted([b for b in page.get_text("blocks") if isinstance(b[4],str)],key=lambda b:(b[1],b[0]))
         print("[DEBUG PDF page]",arxiv,page.number+1,"captions",[b[4][:110].replace("\n"," ") for b in blocks if re.search(r"\b(?:Fig(?:ure)?[.]?)[ ]*[1-9]",b[4],re.I)][:5],flush=True)
