@@ -1,0 +1,111 @@
+{
+  "article": "moe-ep-four-papers-2026",
+  "description": "作者原论文配图。原文 Figure 编号用于文件名，正文图号按出现顺序连续编号。图片内容使用人工上传的 Git blob，未经重新编码或裁切。",
+  "figures": [
+    {
+      "article_figure": 1,
+      "paper": "TEMPO",
+      "original_figure": 1,
+      "source": "https://arxiv.org/abs/2608.13057",
+      "file": "tempo/figure-01-routing-time-vs-token-balance.png"
+    },
+    {
+      "article_figure": 2,
+      "paper": "TEMPO",
+      "original_figure": 2,
+      "source": "https://arxiv.org/abs/2608.13057",
+      "file": "tempo/figure-02-expert-compute-cost.png"
+    },
+    {
+      "article_figure": 3,
+      "paper": "TEMPO",
+      "original_figure": 6,
+      "source": "https://arxiv.org/abs/2608.13057",
+      "file": "tempo/figure-06-workload-performance-map.png"
+    },
+    {
+      "article_figure": 4,
+      "paper": "TEMPO",
+      "original_figure": 8,
+      "source": "https://arxiv.org/abs/2608.13057",
+      "file": "tempo/figure-08-end-to-end-serving-performance.png"
+    },
+    {
+      "article_figure": 5,
+      "paper": "Relief",
+      "original_figure": 1,
+      "source": "https://arxiv.org/abs/2611.11402",
+      "file": "relief/figure-01-per-step-balancing-overhead.png"
+    },
+    {
+      "article_figure": 6,
+      "paper": "Relief",
+      "original_figure": 5,
+      "source": "https://arxiv.org/abs/2611.11402",
+      "file": "relief/figure-05-pairwise-relaxation-scheduling.png"
+    },
+    {
+      "article_figure": 7,
+      "paper": "Relief",
+      "original_figure": 7,
+      "source": "https://arxiv.org/abs/2611.11402",
+      "file": "relief/figure-07-effective-utilization.png"
+    },
+    {
+      "article_figure": 8,
+      "paper": "Relief",
+      "original_figure": 9,
+      "source": "https://arxiv.org/abs/2611.11402",
+      "file": "relief/figure-09-solver-scalability.png"
+    },
+    {
+      "article_figure": 9,
+      "paper": "MegaFlux",
+      "original_figure": 2,
+      "source": "https://arxiv.org/abs/2610.00671",
+      "file": "megaflux/figure-02-expert-replication-pipeline.png"
+    },
+    {
+      "article_figure": 10,
+      "paper": "MegaFlux",
+      "original_figure": 3,
+      "source": "https://arxiv.org/abs/2610.00671",
+      "file": "megaflux/figure-03-routing-skew-speedup.png"
+    },
+    {
+      "article_figure": 11,
+      "paper": "MegaFlux",
+      "original_figure": 4,
+      "source": "https://arxiv.org/abs/2610.00671",
+      "file": "megaflux/figure-04-replication-pipeline-ablation.png"
+    },
+    {
+      "article_figure": 12,
+      "paper": "OverlapAdvisor",
+      "original_figure": 2,
+      "source": "https://arxiv.org/abs/2611.11857",
+      "file": "overlapadvisor/figure-02-strategy-performance-comparison.png"
+    },
+    {
+      "article_figure": 13,
+      "paper": "OverlapAdvisor",
+      "original_figure": 3,
+      "source": "https://arxiv.org/abs/2611.11857",
+      "file": "overlapadvisor/figure-03-system-architecture.png"
+    },
+    {
+      "article_figure": 14,
+      "paper": "OverlapAdvisor",
+      "original_figure": 6,
+      "source": "https://arxiv.org/abs/2611.11857",
+      "file": "overlapadvisor/figure-06-kernel-speedup.png"
+    },
+    {
+      "article_figure": 15,
+      "paper": "OverlapAdvisor",
+      "original_figure": 8,
+      "source": "https://arxiv.org/abs/2611.11857",
+      "file": "overlapadvisor/figure-08-serving-throughput.png"
+    }
+  ]
+}

@@ -36,7 +36,9 @@ const {
   hideEditPost,
 } = post.data;
 
-const { Content } = await render(post);
+const { Content, headings } = await render(post);
+const tocHeadings = headings.filter(heading => heading.depth === 2 || heading.depth === 3);
+const showToc = tocHeadings.length >= 4;
 
 let ogImageUrl: string | undefined;
 
@@ -104,13 +106,44 @@ const nextPost =
       >
       <EditPost {hideEditPost} {post} class="max-sm:hidden" />
     </div>
-    <article
-      id="article"
-      class="app-prose mt-8 w-full max-w-none prose-pre:bg-(--shiki-light-bg) dark:prose-pre:bg-(--shiki-dark-bg)"
-      style="width: 100%; max-width: none;"
+    <div
+      class:list={["post-reading-layout mt-8", { "has-toc": showToc }]}
+      data-post-reading-layout
+      data-toc-collapsed="false"
     >
-      <Content />
-    </article>
+      {showToc && (
+        <aside class="post-toc" aria-label="文章目录" data-pagefind-ignore>
+          <button
+            type="button"
+            class="post-toc-toggle"
+            data-toc-toggle
+            aria-controls="post-toc-nav"
+            aria-expanded="true"
+          >
+            <span>目录</span>
+            <span data-toc-toggle-label>收起</span>
+          </button>
+          <nav class="post-toc-nav" id="post-toc-nav" aria-label="章节导航">
+            <ul>
+              {tocHeadings.map(heading => (
+                <li class:list={[{ "toc-subheading": heading.depth === 3 }]}>
+                  <a href={`#${heading.slug}`} data-toc-target={heading.slug}>
+                    {heading.text}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </nav>
+        </aside>
+      )}
+      <article
+        id="article"
+        class="app-prose w-full max-w-none prose-pre:bg-(--shiki-light-bg) dark:prose-pre:bg-(--shiki-dark-bg)"
+        style="width: 100%; max-width: none;"
+      >
+        <Content />
+      </article>
+    </div>
 
     <hr class="my-8 border-dashed" />
 
@@ -215,6 +248,57 @@ const nextPost =
   }
   addHeadingLinks();
 
+  // Each rendered article owns its own TOC. No site-wide layout state.
+  (function initPostToc() {
+    const layout = document.querySelector("[data-post-reading-layout].has-toc");
+    if (!layout || layout.dataset.tocInitialized === "true") return;
+    layout.dataset.tocInitialized = "true";
+    const toggle = layout.querySelector("[data-toc-toggle]");
+    const label = layout.querySelector("[data-toc-toggle-label]");
+    const nav = layout.querySelector(".post-toc-nav");
+    const links = Array.from(nav.querySelectorAll("[data-toc-target]"));
+    const desktop = window.matchMedia("(min-width: 1100px)");
+    function setCollapsed(collapsed) {
+      layout.dataset.tocCollapsed = String(collapsed);
+      toggle.setAttribute("aria-expanded", String(!collapsed));
+      nav.hidden = collapsed;
+      label.textContent = collapsed ? "展开" : "收起";
+    }
+    setCollapsed(!desktop.matches);
+    toggle.addEventListener("click", () => {
+      setCollapsed(layout.dataset.tocCollapsed !== "true");
+    });
+    nav.addEventListener("click", event => {
+      if (event.target.closest("a") && !desktop.matches) setCollapsed(true);
+    });
+    const targets = links.map(link => document.getElementById(link.dataset.tocTarget));
+    let scheduled = false;
+    function updateActive() {
+      scheduled = false;
+      let index = -1;
+      for (let i = 0; i < targets.length; i++) {
+        if (targets[i] && targets[i].getBoundingClientRect().top <= 104) index = i;
+      }
+      links.forEach((link, i) => {
+        if (i === index) link.setAttribute("aria-current", "location");
+        else link.removeAttribute("aria-current");
+      });
+    }
+    function queueActive() {
+      if (!scheduled) {
+        scheduled = true;
+        requestAnimationFrame(updateActive);
+      }
+    }
+    window.addEventListener("scroll", queueActive, { passive: true });
+    window.addEventListener("resize", queueActive, { passive: true });
+    document.addEventListener("astro:before-swap", () => {
+      window.removeEventListener("scroll", queueActive);
+      window.removeEventListener("resize", queueActive);
+    }, { once: true });
+    updateActive();
+  })();
+
   function attachCopyButtons() {
     const copyButtonLabel = "Copy";
     const codeBlocks = Array.from(document.querySelectorAll("pre"));
@@ -263,3 +347,103 @@ const nextPost =
     window.scrollTo({ left: 0, top: 0, behavior: "instant" })
   );
 </script>
+
+
+<style>
+  .post-reading-layout {
+    min-width: 0;
+  }
+  .post-reading-layout > article {
+    min-width: 0;
+  }
+  .post-toc {
+    min-width: 0;
+    color: var(--foreground);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+    background: var(--background);
+    align-self: start;
+  }
+  .post-toc-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    gap: 16px;
+    font-size: 14px;
+    font-weight: 650;
+    text-align: left;
+    line-height: 1.5;
+    color: var(--foreground);
+    padding: 5px 8px;
+    border-radius: 6px;
+  }
+  .post-toc-toggle:hover { background: var(--muted); }
+  .post-toc-toggle [data-toc-toggle-label] {
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--accent);
+    white-space: nowrap;
+  }
+  .post-toc-nav {
+    max-height: 42vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    margin-top: 10px;
+    padding-right: 3px;
+    scrollbar-width: thin;
+  }
+  .post-toc-nav[hidden] { display: none; }
+  .post-toc-nav ul { list-style: none; margin: 0; padding: 0; }
+  .post-toc-nav li { margin: 2px 0; }
+  .post-toc-nav a {
+    display: block;
+    padding: 5px 8px;
+    font-size: 13px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+    border-left: 2px solid transparent;
+    text-decoration: none;
+    border-radius: 0 5px 5px 0;
+  }
+  .post-toc-nav .toc-subheading a {
+    padding-left: 20px;
+    font-size: 12px;
+    opacity: 0.82;
+  }
+  .post-toc-nav a:hover,
+  .post-toc-nav a[aria-current="location"] {
+    color: var(--accent);
+    background: var(--muted);
+    border-left-color: var(--accent);
+    opacity: 1;
+  }
+  .post-reading-layout.has-toc { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr); }
+  .post-reading-layout[data-toc-collapsed="true"] { grid-template-columns: minmax(0, 1fr); }
+  .post-reading-layout[data-toc-collapsed="true"] .post-toc {
+    padding: 3px;
+    width: max-content;
+    justify-self: end;
+    position: sticky;
+    top: 12px;
+    z-index: 8;
+    box-shadow: 0 2px 8px #00000014;
+  }
+  .post-reading-layout[data-toc-collapsed="true"] .post-toc-toggle { width: auto; }
+  @media (min-width: 1100px) {
+    .post-reading-layout.has-toc:not([data-toc-collapsed="true"]) {
+      grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+      gap: 30px;
+    }
+    .post-reading-layout.has-toc:not([data-toc-collapsed="true"]) .post-toc {
+      position: sticky;
+      top: 20px;
+    }
+    .post-toc-nav { max-height: calc(100vh - 110px); }
+  }
+  @media print {
+    .post-toc { display: none !important; }
+    .post-reading-layout.has-toc { display: block !important; }
+  }
+</style>
