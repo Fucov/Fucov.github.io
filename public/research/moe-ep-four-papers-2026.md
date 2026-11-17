@@ -85,11 +85,11 @@
 
 ### 1.3 核心 Insight：为什么旧方法在这里失效
 
-![TEMPO Figure 1：为什么 Token 均衡不等于执行时间均衡](/research/moe-paper-figures/tempo_fig1.png)
+![TEMPO Figure 1：为什么 Token 均衡不等于执行时间均衡](moe-paper-figures/tempo_fig1.png)
 
 **图 1｜Token 分得一样多，不代表 GPU 用时一样长。** 左图：单个专家的 Token 较少时，执行时间几乎不变；超过约 156 个 Token 后，时间才随计算量明显增长。右图：针对同一批请求，按 Token 数平分的方案反而比 TEMPO 的时间感知分配更慢。
 
-![TEMPO Figure 2：不同专家形状下的实测成本曲线](/research/moe-paper-figures/tempo_fig2.png)
+![TEMPO Figure 2：不同专家形状下的实测成本曲线](moe-paper-figures/tempo_fig2.png)
 
 **图 2｜专家计算存在“固定开销区”和“计算增长区”。** 左图：每个专家的执行时间先接近水平线，Token 足够多后才上升。右图：不同模型形状的转折点并不相同，所以调度器需要针对模型和 GPU 测量成本，不能使用一个通用的 Token 阈值。
 
@@ -129,9 +129,30 @@ publish_assignment_async(assignment)
 
 特别注意 **Async**：TEMPO 把部分求解工作放在后台，利用近期负载统计更新 Dispatch Table，执行侧读最新的表。这减少求解器对当前 GPU Critical Path 的影响，但表可能落后于正在发生的路由变化。
 
-### 1.5 实验结果：证明了什么
+### 1.5 实验结果：成本模型在哪些场景真正有用？
 
-它解决了 Token Balance 作为负载代理不够准确的问题，并展示了什么时候优化有用、什么时候收益有限。作者在 Qwen3-235B 相关 Serving 测试中报告约 **4–6% 的吞吐提升**，P99 ITL 的特定配置下降约 **15.6%**；部分更大规模的收益分析依赖校准模型外推，不等价于同规模真实集群测试。
+**实验设置。** 论文使用两代数据中心 GPU（具体型号匿名），在 EP8 上进行实机微基准和 SGLang 端到端测试，并将成本模型扩展至 EP32–64 的模拟实验。端到端主要比较 Qwen3-235B-A22B-FP8 和 DeepSeek-V3，基线包括静态 EPLB、均匀副本分配和 Token-LP。
+
+**（1）负载不同时，正确的均衡方式也不同。**
+
+![TEMPO 原论文 Figure 6：不同 Batch 和路由偏斜下的最优分配策略](moe-paper-figures/tempo_fig3.png)
+
+**原论文 Figure 6｜不同负载下的性能相图。** 横轴与纵轴分别描述 Batch 大小和专家路由偏斜程度；字母标记当前条件下最好的固定策略，颜色与数字表示 TEMPO 相对该策略的收益。小 Batch 更适合减少被激活的专家副本，大 Batch 更适合分担 Token 计算，混合区间则需要同时考虑二者。作者报告 TEMPO 在模拟网格上与最佳固定策略的差距不超过 1%，部分混合区间收益最高达 15.5%（最大收益包含 EP32–64 的模型外推，并非全规模实机结果）。
+
+**（2）端到端验证：同一算法在不同模型上可以一赢一输。**
+
+![TEMPO 原论文 Figure 8：Qwen3-235B 与 DeepSeek-V3 的吞吐和尾延迟对比](moe-paper-figures/tempo_fig4.png)
+
+**原论文 Figure 8｜真实服务吞吐与 P99 TPOT。** 图中以同一测量窗口的静态策略为参照，比较多种分配方法。Qwen3-235B 在长文档摘要等负载有收益，而 DeepSeek-V3 在通信占主导的设置下没有收益。
+
+| 场景 | TEMPO 相对静态策略的结果 |
+|---|---|
+| Qwen3-235B，GovReport | 吞吐中位数提升约 5% |
+| Qwen3-235B，Poisson 到达（8 请求/s） | P99 TPOT 从 226 ms 降至 191 ms（−15.6%） |
+| Qwen3-235B，双节点 EP16 | 拓扑感知分配在相关负载下提升约 4–7% |
+| DeepSeek-V3，通信占主导 | 各负载吞吐下降约 2–3% |
+
+**结论。** TEMPO 最有价值的结果并非最大加速比，而是证明负载均衡存在明确的适用区间。真实耗时模型能够解释不同策略何时有效，也能预测什么时候不该增加调度开销。论文还发现，相对原版 LPLB 的部分大幅收益来自移除逐层通信和调度开销，不能全部归功于成本目标函数。
 
 ### 1.6 现有局限与值得进一步研究的问题
 
@@ -155,7 +176,7 @@ EP 的专家复制通常不会每个 Token 都变化，但 **Router 的实际输
 
 **Relief 研究的问题**是：给定已放好的物理专家副本和当前这一步的专家 Token 计数，怎样用非常少的 GPU/硬件操作，为当前 Step 生成足够均衡的 Token 分配？这里需要连求解器本身耗时一起算。
 
-![Relief Figure 1：每个 Decode Step 的负载变化与规划开销](/research/moe-paper-figures/relief_fig1.png)
+![Relief Figure 1：每个 Decode Step 的负载变化与规划开销](moe-paper-figures/relief_fig1.png)
 
 **图 3｜为什么要做“每步负载均衡”。** 图的上方显示专家放置通常经过很多步才更新，而每个 Decode Step 的专家请求量都不同；下方显示三种执行方式：完全不调整会留下大量 GPU 等待，逐步求精确最优解又需要等待求解器，Relief 则希望用更快的计算缩短这段额外等待。
 
@@ -186,7 +207,7 @@ $$
 
 这只需要整数减法、比较、右移（折半）和更新两个计数器。下一轮其他边更新后，负载方向也可能反转，所以允许双向转移。
 
-![Relief Figure 5：成对松弛、边着色和并行更新](/research/moe-paper-figures/relief_fig5.png)
+![Relief Figure 5：成对松弛、边着色和并行更新](moe-paper-figures/relief_fig5.png)
 
 **图 4｜Relief 怎样把负载差转成可以并行执行的搬运操作。** 左边是本层各 GPU 的初始负载；中间依次列出从重载卡转到轻载卡的专家 Token 搬运计划；右边是在这些计划执行后，各 GPU 的负载更接近。不同轮次处理互不冲突的 GPU 对，减少同步冲突。
 
@@ -231,9 +252,30 @@ for _ in range(num_passes):
 
 论文讨论 CUDA、FPGA 及专用 On-die Engine 三种实现路径。**硬件 On-die 结果不能直接当作现有 GPU CUDA Kernel 的端到端吞吐提升。**
 
-### 2.5 实验结果：证明了什么
+### 2.5 实验结果：低开销求解能恢复多少 GPU 利用率？
 
-论文报告其分配接近逐 Step Token-LP 最优；特定专用硬件方案在作者定义的 **Effective Utilization** 上最多恢复约 **37.3 个百分点**。这是一个包含求解开销的利用率指标，**不是“Tokens/s 增加 37.3%”**。
+**实验设置。** 作者从 Qwen3-30B-A3B、OLMoE-1B-7B 和 Qwen1.5-MoE-A2.7B 提取 GSM8K、WildChat 的 Decode 路由记录。主要测试 EP8/16/32/64，较小模型仅测试其支持的规模。比较 No Balancing、静态 EPLB、GPU LPLB、CPU LP 及 Relief 的 CUDA、FPGA、专用芯片三种实现。核心评价指标为相对于零开销逐步最优解的 Effective Utilization：这些结果基于路由回放、求解器实测及硬件评估，并非完整在线服务的 Tokens/s 实测。
+
+**（1）均衡结果接近最优，还必须把求解时间算进去。**
+
+![Relief 原论文 Figure 7：不同 EP 规模与 MoE 层耗时下的有效利用率](moe-paper-figures/relief_fig6.png)
+
+**原论文 Figure 7｜求解成本决定动态调度是否划算。** 横轴表示原始 MoE 层耗时，纵轴是考虑求解时间后的有效利用率，不同子图对应不同 EP 规模。当层本身很短时，精确 LP 即使获得更均衡的结果，也可能因为求解过慢而输给静态方案；Relief 的轻量求解在这些区域更有优势。专用芯片评估中，相对静态放置最多恢复 **37.3 个百分点**的有效利用率；该数值不是 GPU 端到端吞吐增幅。
+
+**（2）并行规模增大后，精确 LP 的开销成为额外瓶颈。**
+
+![Relief 原论文 Figure 9：求解时间与工作内存随 EP 规模变化](moe-paper-figures/relief_fig7.png)
+
+**原论文 Figure 9｜Relief 与 LP 的可扩展性对比。** 左图比较求解时间，右图比较求解器工作内存。精确 LP 的工作内存随 Rank 数平方增长，超过 GPU 共享内存容量后不能直接启动；Relief 的固定功能实现随 EP 规模增加，求解时间变化较小。
+
+| 指标 | 论文报告 |
+|---|---|
+| GPU 精确 LP | 约 100 μs 量级；大 EP 下受共享内存限制 |
+| Relief CUDA 求解器 | 代表性结果约 13–26 μs |
+| Relief 专用芯片，固定 12 轮 | EP8/64 约 0.75/0.79 μs（硬件实现评估） |
+| 空间利用率 | 128 专家模型的 192 个层/规模组合中，190 个优于其他可部署方法 |
+
+**结论。** Relief 证明了快而近似的求解器可以比慢而精确的求解器更有用。但在两个 EP64 实验层上，默认放置反而更好：再好的 Token 分配也无法完全补救不合适的专家布局。这进一步说明 Placement 和 Dispatch 是两个不同的优化问题。
 
 ### 2.6 现有局限与值得进一步研究的问题
 
@@ -273,7 +315,7 @@ $$
 
 执行第一段 FC1 只需要 `X` 和 `W1`；第二段 FC2 才需要 `W2`。
 
-![MegaFlux Figure 2：热点专家复制及 FC1/FC2 流水线](/research/moe-paper-figures/megaflux_fig2.png)
+![MegaFlux Figure 2：热点专家复制及 FC1/FC2 流水线](moe-paper-figures/megaflux_fig2.png)
 
 **图 5｜专家权重的复制可以和专家计算同时进行。** 左侧比较固定放置与 MegaFlux：固定放置的热点 GPU 很忙、另一块 GPU 空闲；MegaFlux 把部分 Token 和专家权重搬到空闲 GPU，并让先到达的权重立即参与计算。右侧说明训练时梯度归并也能与其他计算重叠。
 
@@ -311,9 +353,33 @@ for expert_tile in persistent_executor(plan):
     return_weighted_output(expert_tile)
 ```
 
-### 3.5 实验结果：证明了什么
+### 3.5 实验结果：负载均衡与权重传输流水线分别带来多少收益？
 
-在 8×B200 NVLink 域的论文设置下，MegaFlux 相对固定放置 Megakernel 报告 Forward 几何平均约 **1.45×**；特定 vLLM 的 Prefill 端到端报告约 **1.13–1.26×**。前者是 Layer/Kernel 级结果，后者是系统级结果，不能混为一谈。
+**实验设置。** 8×B200（单个 NVLink 域，EP8），64/128/256 个专家，Top-8，25% 额外专家副本容量；每个 Rank 输入 1K–64K Token。前向采用 MXFP4 权重、MXFP8 激活。微基准保留真实 Trace 的路由负载分布，同时使用合成权重与激活，以便控制变量。主要基线是同一个 MegaMoE Megakernel 的固定专家放置版本。
+
+**（1）动态复制的收益有多大，取决于路由有多偏斜。**
+
+![MegaFlux 原论文 Figure 3：不同路由分布、专家数与 Token 规模下的加速比](moe-paper-figures/megaflux_fig3.png)
+
+**原论文 Figure 3｜动态复制相对固定放置的性能。** 不同曲线对应专家数，子图对应不同路由分布。路由越不均匀、计算量越足以摊薄复制成本，通常收益越明显。在每个方向的 147 组配置中，前向和反向的几何平均加速比分别为 **1.45×、1.28×**，最高分别达 2.14×、2.64×；对于均匀路由，基本没有加速。
+
+**（2）同样的复制方案，为什么流水线执行更快？**
+
+![MegaFlux 原论文 Figure 4：独立执行专家复制与流水线复制的消融对比](moe-paper-figures/megaflux_fig4.png)
+
+**原论文 Figure 4｜拆分动态复制与流水线的贡献。** 两种复制方案使用相同的专家放置和 Token 分配计划，区别仅在于是否把复制操作与计算一起执行。这组消融说明提升既来自减少热点 GPU 的计算，也来自隐藏复制时间。相比独立执行复制，流水线进一步降低前向延迟最多 13.2%、反向最多 26.7%。作者估计前向隐藏了 56–76% 的权重传输成本。
+
+**（3）真实推理系统是否也有效？**
+
+论文将 MegaFlux 集成到 vLLM，在 8×B200 上用 DeepSeek-V4-Pro 对 160 条 LongBench-Pro Prompt 进行 Prefill 测试。原论文 Table 1 的中位数加速比如下：
+
+| Batch Size | 每 GPU 16K Prefill Chunk | 每 GPU 32K Prefill Chunk |
+|---:|---:|---:|
+| 8 | 1.128× | 1.133× |
+| 16 | 1.227× | 1.238× |
+| 32 | 1.165× | 1.260× |
+
+**结论。** MegaFlux 不只是用复制解决负载不均衡，还证明了复制带来的额外通信可以部分隐藏在 Megakernel 内。Prefill 的系统级收益为 **1.13–1.26×**；由于小 Batch 下规划和复制的固定成本占比更高，不能直接推出 Decode 也能获得相同收益。
 
 ### 3.6 现有局限与值得进一步研究的问题
 
@@ -345,7 +411,7 @@ for expert_tile in persistent_executor(plan):
 
 ### 4.3 核心 Insight：为什么旧方法在这里失效
 
-![OverlapAdvisor Figure 2：不同平台与负载下，最优 Overlap 策略会变化](/research/moe-paper-figures/overlap_fig2.png)
+![OverlapAdvisor Figure 2：不同平台与负载下，最优 Overlap 策略会变化](moe-paper-figures/overlap_fig2.png)
 
 **图 6｜没有一种通信—计算重叠策略在所有情况下都最快。** 四个子图对应不同 GPU、模型及精度配置；横轴是处理的 Token 数，纵轴为相对最佳策略的性能（最佳为 100%）。不同颜色分别代表不同执行方案，最佳方案会随硬件和负载变化。
 
@@ -361,7 +427,7 @@ for expert_tile in persistent_executor(plan):
 
 ### 4.4 算法如何对应问题：逐步解决什么
 
-![OverlapAdvisor Figure 3：性能预测、策略适配与服务启动](/research/moe-paper-figures/overlap_fig3.png)
+![OverlapAdvisor Figure 3：性能预测、策略适配与服务启动](moe-paper-figures/overlap_fig3.png)
 
 **图 7｜OverlapAdvisor 的完整决策流程。** 左侧输入模型、Token 数、GPU 与 EP 配置；中间先估算候选方案的通信和计算耗时，再挑选适合当前配置的执行策略；右侧将该策略交给 SGLang/vLLM 启动运行，并分析最终吞吐和延迟。
 
@@ -380,9 +446,40 @@ start_serving_engine(backend=min(predicted, key=predicted.get))
 
 **一个重要事实**：论文的核心策略选择发生在**启动/配置阶段**，不能把它理解为“每个 Decode Step 都动态选择后端”。
 
-### 4.5 现有局限与值得进一步研究的问题
+### 4.5 实验结果：选择最合适的执行策略能带来多大收益？
 
-论文在多个平台及 103 组生产配置中评测，作者报告预测 MAPE 约 **3.3–15.9%**，Kernel 平均加速约 **1.16×**，一些端到端设置的吞吐最高提高 **31.7%**。预测精度、Kernel 加速、服务器吞吐来自不同指标，不应直接相加。
+**实验设置。** 覆盖 A100、H20、H800、GB200 四种 GPU 平台，103 种真实模型配置（MoE Shape），Token 数 32–16K。Kernel 层比较 Comet、FlashMoE、Torch、DeepEP、MegaMoE、UniEP 等可运行的固定方案；系统层在 SGLang 和 vLLM 中比较 MegaMoE、UniEP、DeepEP，覆盖 Prefill/Decode 混合部署及 PD 分离。
+
+**（1）Kernel 性能：相对各平台最强的固定后端仍有收益。**
+
+![OverlapAdvisor 原论文 Figure 6：不同平台与计算精度下的 Kernel 加速比](moe-paper-figures/overlap_fig4.png)
+
+**原论文 Figure 6｜自动选择策略与固定方案的对比。** 不同柱子表示不同基线。如果选择始终固定的后端，它可能在部分模型形状上明显落后；OverlapAdvisor 根据当前部署配置挑选执行策略。相对各平台最强固定策略的平均加速为 1.16×，最高平台平均加速为 1.59×。但在 FP8、MegaMoE 已经表现很好的配置组中，平均收益只有约 2–3%。
+
+| 平台与配置组 | 最强固定基线 | Kernel 加速 |
+|---|---|---:|
+| A100，BF16 | Comet | 1.59× |
+| H20，BF16 | DeepEP-v1 | 1.15× |
+| H800，BF16 | DeepEP-v1 | 1.14× |
+| FP8 三个平台 | MegaMoE | 1.02–1.03× |
+
+**（2）端到端系统：策略选择收益依赖系统本来使用的后端。**
+
+![OverlapAdvisor 原论文 Figure 8：SGLang 与 vLLM 端到端吞吐提升](moe-paper-figures/overlap_fig5.png)
+
+**原论文 Figure 8｜五种部署配置中的服务吞吐变化。** 图中区分引擎、模型及部署方式，比对相同部署下固定后端与自动选择的吞吐量。相比本来已经很高效的 MegaMoE，平均增益有限；如果初始部署使用了不合适的 DeepEP 或 UniEP 策略，重新选择的价值更明显。
+
+| 固定系统基线 | 平均吞吐提升 | 最大吞吐提升 |
+|---|---:|---:|
+| MegaMoE | 1.78% | 9.28% |
+| UniEP | 4.57% | 9.95% |
+| DeepEP | 9.97% | 31.72% |
+
+性能预测模型的 MAPE 为 3.3–15.9%，启动时选择策略约需 6 μs；服务过程中不需要反复预测和调度。
+
+**结论。** OverlapAdvisor 证明了通信计算重叠需要针对具体模型和硬件选择，而不是使用固定的最优后端。它尤其擅长规避选错策略的性能损失，而非让所有成熟后端都提高 30%。该方法主要解决启动时的静态选择，尚未直接说明运行时频繁变化的 Batch 应如何处理。
+
+### 4.6 现有局限与值得进一步研究的问题
 
 **作者讨论的延伸**：多节点、细粒度 SM/Warp 资源争用、模型跨平台迁移与复杂执行路径的拟合仍值得加强。
 
