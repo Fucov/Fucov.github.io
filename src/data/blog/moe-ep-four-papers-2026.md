@@ -1,67 +1,12 @@
 ---
-title: "MoE 推理系统研究：问题、算法与下一步研究机会"
+title: "MoE 推理系统论文精读：TEMPO 与 MegaScale-Infer"
 pubDatetime: 2026-11-16T23:30:00+08:00
-modDatetime: 2026-11-18T00:28:00+08:00
-description: "梳理 MoE 推理的共性问题，依次从研究背景、算法、核心洞察、问题解决机制与局限拆解 TEMPO、Relief、MegaFlux、OverlapAdvisor。"
+modDatetime: 2026-11-20T00:00:00+08:00
+description: "精读 TEMPO 与 MegaScale-Infer：从真实专家执行时间建模，到 Attention–FFN 分离、乒乓流水线与异构部署。"
 tags: ["llm-systems", "research-survey", "moe", "expert-parallel", "inference"]
 featured: true
 timezone: Asia/Shanghai
 hideEditPost: true
----
-
-# MoE 推理系统研究：问题、算法与下一步研究机会
-
-## 0. MoE 推理研究现状：共同问题在哪里？
-
-### 0.1 一层 MoE 到底执行了什么？
-
-以一个已经完成 Attention 的 Token `x` 为例，MoE 层并非让所有 FFN 都计算，而是：
-
-1. **Router** 根据 `x` 计算所有专家的 Gate Logits，选出 Top-K 个**逻辑专家**。它决定“这个 Token 由谁计算”，不是决定物理 GPU。
-2. **Physical Dispatch** 根据专家的物理放置和副本分配表，把 Token 发给拥有相应专家权重的 GPU。每个 Token 通常向 K 个专家各发送一次。
-3. **Grouped GEMM / Expert FFN** 把发往同一专家的 Token 打包，运行不同形状的专家矩阵乘法。
-4. **Combine** 把各 Expert 输出传回原 Token 所在的设备，按照 Gate 权重合并，并恢复 Token 顺序。
-5. **下一层** 继续执行。**该层整体耗时往往由最慢 Rank 和通信同步决定**。
-
-不同并行方式的区别也必须先明确：在 **EP** 中，一个逻辑 Expert 通常有完整权重副本分布到指定设备，Token 通过 All-to-All 到达它；在 **TP-only** 中，专家矩阵可能按张量维度切分，并不必然使用相同的专家 Dispatch/Combine 流程。下面四篇主要讨论具有物理专家放置及冗余副本选择自由度的 EP。
-
-### 0.2 Prefill 和 Decode 为什么是两套性能问题？
-
-| 维度 | Prefill | Decode |
-|---|---|---|
-| 输入 Token | 较多 Token 同时进入 MoE | 每步通常每个活跃请求仅一个新 Token |
-| 专家 GEMM | 更容易有较大的 M，计算更充分 | 小 M、权重装载与 Launch/同步常占比更大 |
-| Dispatch / Combine | 关注大规模传输、吞吐和流水线 | 关注每轮的固定延迟与等待时间 |
-| 热点变化 | Batch/序列长度导致专家偏斜 | 每一层、每一 Step 都可能变化 |
-| 调度成本 | 可能有更多计算时间掩蔽规划开销 | 规划器可能比希望节省的时间还慢 |
-| 核心指标 | TTFT、Prefill Tokens/s | TPOT、P95/P99 ITL、Decode Tokens/s |
-
-这意味着一个在大 Batch 上很好的 Load Balancer，迁移到 Decode 不一定有收益；一个很快的 All-to-All Kernel，也不能保证它的后续 Expert GEMM 没有 Straggler。
-
-### 0.3 目前公认的五个矛盾
-
-**矛盾一：逻辑专家负载本来就不均匀。** 模型 Router 对不同 Expert 有不同偏好，简单地强迫逻辑 Top-K 均匀可能破坏模型行为。系统要做的是在不改变 Router 结果的前提下改动物理执行。
-
-**矛盾二：Token 数相同，不代表 GPU 耗时相同。** 小专家可能被读取权重的固定开销主导；热专家可能被计算主导；M-Tile Padding 又让计算时间呈阶梯状。
-
-**矛盾三：更好的分配需要更多计算时间。** 如果优化 LP 花费约 100 μs，而单层 MoE 只有几十微秒，就可能得不偿失。
-
-**矛盾四：搬 Token 和搬 Expert Weight 谁更便宜？** 已有副本可低成本重分 Token；没有副本时可以复制专家权重，但参数搬运、显存和同步不是免费的。
-
-**矛盾五：时间能否被重叠隐藏？** `Dispatch + GEMM + Combine` 是逻辑顺序，但真实系统可以把一部分数据传输和计算流水重叠，因此总时延应看 Dependency Critical Path，而非简单把三项相加。
-
-可以把研究空间粗略分成：
-
-| 决策 | 作用 | 代表工作 |
-|---|---|---|
-| **Expert Placement** | 决定专家/副本在哪些 GPU | EPLB、CRAFT |
-| **Token-to-Replica Split** | 决定现有副本各接多少 Token | LPLB、TEMPO、Relief |
-| **Dynamic Replication** | 当前 Step 为热点专家创建新副本 | LLEP、MegaFlux、UltraEP |
-| **Communication Protocol** | 决定如何传输与同步 | DeepEP、NVLinkOneSided |
-| **Execution Strategy** | 决定是否融合、如何重叠与流水 | MegaFlux、OverlapAdvisor |
-
-**研究趋势**：2025–2026 年，问题正在从“尽量均匀分 Token”演进为“让当前 MoE 层的真实执行关键路径尽可能短”。下文四篇分别解决**成本目标、求解速度、复制执行、策略选择**这四个环节。
-
 ---
 
 ## 1. TEMPO：先搞清楚「什么叫负载均衡」
@@ -173,379 +118,194 @@ publish_assignment_async(assignment)
 
 **潜在创新**：设计一种 Staleness-aware Dispatcher：根据专家热点变化速度决定继续用后台表、在本步快速修正，或者直接回退到简单规则。需要比较“预测准确率”之外的真实 TPOT / Planner Overhead / P99。
 
+
 ---
 
-## 2. Relief：让负载均衡算法快到能在每个 Decode Step 都运行
+## 2. MegaScale-Infer：为什么 Attention 与 FFN 必须放在同一组 GPU 上？
 
-**论文**：[A Per-Step Load-Balancing Engine for Expert-Parallel MoE Serving](https://arxiv.org/abs/2611.11402) · [PDF](https://arxiv.org/pdf/2611.11402)  
-**作者**：Jingyuan Li、Maolin Wang、Hayden So。**机构**：HKU / HKUST。  
-**代码**：[relief-paper-archive](https://github.com/SuanNaiShuiGuoLao/relief-paper-archive) 是论文档案，尚不能当作完整可运行的 EP 求解器。
+**论文**：[MegaScale-Infer: Efficient Mixture-of-Experts Model Serving with Disaggregated Expert Parallelism](https://doi.org/10.1145/3718958.3750506) · [SIGCOMM 2025 正式版 PDF](https://chaojin0310.github.io/files/papers/SIGCOMM25-MegaScale-Infer.pdf)  
+**作者**：Ruidong Zhu、Ziheng Jiang、Chao Jin（共同一作）、Peng Wu、Cesar A. Stuardo 等。  
+**机构**：北京大学计算机学院、字节跳动。**代码**：未确认原系统完整公开实现；可参考 [SGLang AF 分离讨论](https://github.com/sgl-project/sglang/issues/9401)。
 
-### 2.1 研究背景与问题定义：每步负载变化，求解器却比推理还慢
+### 2.1 研究背景与问题定义：为什么 MoE 的稀疏计算没有等比例降低推理成本？
 
-EP 的专家复制通常不会每个 Token 都变化，但 **Router 的实际输出会随 Decode Step 改变**。如果沿用上一步的 Token-to-Replica 分配表，新的热点可能使某些 GPU 拖尾；如果每步用线性规划精确重算，又可能付出可观的求解时间。
+MoE 的优势是每个 Token 只激活少数专家。然而，从模型层面减少 FLOPs，并不意味着 GPU 的执行时间会按相同比例降低。
 
-**Relief 研究的问题**是：给定已放好的物理专家副本和当前这一步的专家 Token 计数，怎样用非常少的 GPU/硬件操作，为当前 Step 生成足够均衡的 Token 分配？这里需要连求解器本身耗时一起算。
+在 Decode 阶段，Attention 需要读取各个请求独有的 KV Cache。上下文越长，并发请求越多，显存容量与访存带宽的压力就越大；FFN 则可以让不同 Token 共享同一份专家权重，但只有同一个专家收到足够多的 Token，才能摊薄读取权重的成本。
 
-![图 5：Relief 原文 Figure 1](/assets/posts/moe-ep-four-papers-2026/relief/figure-01-per-step-balancing-overhead.png)
+![图 5：MegaScale-Infer 原文 Figure 1](/assets/posts/moe-ep-four-papers-2026/megascale-infer/figure-01-attention-ffn-utilization.png)
 
-**图 5｜为什么要做“每步负载均衡”（Relief 原文 Figure 1）** 图的上方显示专家放置通常经过很多步才更新，而每个 Decode Step 的专家请求量都不同；下方显示三种执行方式：完全不调整会留下大量 GPU 等待，逐步求精确最优解又需要等待求解器，Relief 则希望用更快的计算缩短这段额外等待。
+**图 5｜Dense、MoE 与分离式 MoE 的 GPU 利用率（MegaScale-Infer 原文 Figure 1）** 左图中 Dense FFN 随 Batch 增长能够较快达到计算饱和；中图中 MoE 的 Token 被分散到不同专家，达到 Batch 上限时 FFN 仍可能没有充分利用 GPU；右图说明拆分资源后，可以扩大专家的有效 Batch，或为不同模块选择性价比更高的硬件。该图解释设计动机，并非具体模型的实测曲线。
 
-### 2.2 核心算法：输入、输出与基本机制
+关键矛盾是：**Attention 限制整个系统能够容纳的 Batch，而 FFN 恰恰需要更大的 Batch 才能高效执行。** 单纯增加传统完整模型副本，往往同时增加 Attention 与 Expert 权重副本，无法独立控制二者的比例。
 
-- **顶点**：物理 GPU。
-- **边**：一个逻辑专家在两个 GPU 上各有一份副本，表示二者之间可以转移该专家的 Token。
-- **边上的流量**：当前专家在两个副本之间的 Token Split。
-- **顶点负载**：该 GPU 所有专家 Token 之和。
+MegaScale-Infer 的研究问题是：在不改变模型 Router、不减少专家计算的前提下，能否释放 Attention 对 Expert Batch 的限制，同时控制新增通信和单 Token 延迟？
 
-假设 GPU0 负载 100，GPU1 负载 20；二者共享专家 `e`，GPU0 目前有足够多的 `e` Token 可移动。若转移 `Δ` 个 Token：
+### 2.2 核心算法：把模型层拆成两个独立资源池
 
-```text
-GPU0: 100 → 100 - Δ
-GPU1:  20 →  20 + Δ
+MegaScale-Infer 提出 Disaggregated Expert Parallelism，即在每个 Transformer Layer 内分离 Attention 和 Expert FFN：
 
-若 Δ = (100 - 20) / 2 = 40
-则两端都变为 60。
-```
+- Attention Pool：多个 Attention Replica 保存各自请求的 KV Cache；副本之间进行 DP，副本内部可使用 TP。
+- Expert Pool：各 Expert Node 保存专家权重，组成 EP Group；单个专家节点也可以使用 TP。
+- 每个 Attention Replica 完成 Attention 与路由后，把中间激活发送到对应 Expert Node；专家计算完成后将结果送回 Attention 侧聚合，进入下一层。
 
-因此一次成对松弛的核心操作可以写成：
+![图 6：MegaScale-Infer 原文 Figure 3](/assets/posts/moe-ep-four-papers-2026/megascale-infer/figure-03-disaggregated-runtime-architecture.png)
 
-$$
-\Delta = \min\left(\left\lfloor
-\frac{|L_u-L_v|}{2}\right\rfloor,
-\mathrm{MovableTokens}(e,u,v)\right).
-$$
+**图 6｜MegaScale-Infer 的运行时架构（MegaScale-Infer 原文 Figure 3）** 左边是一组 Attention 副本，各自保存 Attention 权重和 KV Cache；右边是按专家划分的 Expert 节点。中间双向箭头表示两组 GPU 之间的激活值和输出交换。Attention 副本数与 Expert 并行规模不必相等。
 
-这只需要整数减法、比较、右移（折半）和更新两个计数器。下一轮其他边更新后，负载方向也可能反转，所以允许双向转移。
+这种设计类似 PD 分离，但切分对象不同：
 
-![图 6：Relief 原文 Figure 5](/assets/posts/moe-ep-four-papers-2026/relief/figure-05-pairwise-relaxation-scheduling.png)
+| | PD 分离 | AF 分离（MegaScale-Infer） |
+|---|---|---|
+| 切分维度 | Prefill / Decode 两个阶段 | 每一层的 Attention / FFN |
+| 主要传输 | 阶段交接时的 KV Cache | 每一层的中间激活与专家输出 |
+| 优化目的 | 减少长 Prefill 对 Decode 的干扰 | 增大专家有效 Batch，独立配置资源 |
+| 新增开销 | 状态迁移与调度 | 高频通信及流水线等待 |
 
-**图 6｜Relief 怎样把负载差转成可以并行执行的搬运操作（Relief 原文 Figure 5）** 左边是本层各 GPU 的初始负载；中间依次列出从重载卡转到轻载卡的专家 Token 搬运计划；右边是在这些计划执行后，各 GPU 的负载更接近。不同轮次处理互不冲突的 GPU 对，减少同步冲突。
+MegaScale-Infer 本身也将 Prefill 与 Decode 分在不同集群，主要研究 Decode 集群内部的 AF 分离。因此两种方法可以同时使用。
 
-### 2.3 核心 Insight：为什么旧方法在这里失效
+### 2.3 核心 Insight：让同一份专家权重服务更多 Token
 
-一个典型矛盾：
-
-- 复用上一步分配：本步专家流量已变，GPU 可能严重不均衡；
-- 本步现求 LP 最优：规划延迟可能是几十至上百微秒，吃掉 MoE 的部分收益；
-- 忽略求解时间只比较“均匀程度”：优化指标错误。
-
-Relief 因此关心一个更务实的指标：
+假设一个模型有 $E$ 个专家，每个 Token 选择 $K$ 个专家，每个 Attention 副本在一个 Microbatch 中处理 $b_a$ 个 Token，总共有 $n_a$ 个 Attention 副本。若专家负载均匀，则：
 
 $$
-U_\text{effective}
-= U_\text{spatial}\cdot
-\frac{T_\text{MoE}}{T_\text{solve}+T_\text{MoE}}.
+\overline{b_e}=\frac{n_a b_a K}{E}.
 $$
 
-如果为了把 GPU 利用率从 80% 提高到 90%，额外付出了很长的 Solver 延迟，有效利用率反而可能下降。
+$\overline{b_e}$ 为单个专家平均处理的 Token 数。这个公式是平均量，不保证每个专家的实际负载一致。
 
-### 2.4 算法如何对应问题：逐步解决什么
+举例：$E=8$，$K=2$，单个 Attention 副本一次只处理 128 个 Token。
 
-1. **慢速准备**：由当前专家副本布局建立 GPU–Expert Graph。给边着色，保证同一颜色的两条边不共享 GPU。
-2. **每 Step**：读取当前 Router 每个逻辑专家的 Token 数，初始化各 GPU 的负载。
-3. **颜色轮执行**：同色边相互独立，可并行进行整数折半；每轮后同步负载计数。
-4. **重复少量 Pass**：逐步逼近 LP 负载均衡解。
-5. **输出 Split Table**：交给后续真正的 Token Dispatch Kernel。
+| Attention 副本数 | 专家池总请求 Token 数 | 每个专家平均 Token 数 |
+|---:|---:|---:|
+| 1 | 128 | 32 |
+| 2 | 256 | 64 |
+| 4 | 512 | 128 |
+| 8 | 1024 | 256 |
 
-```python
-# Relief 思想的教学伪代码
-for _ in range(num_passes):
-    for edge_group in disjoint_edge_colors:
-        parallel_for (gpu_a, gpu_b, expert) in edge_group:
-            src, dst = heavier_to_lighter(gpu_a, gpu_b)
-            delta = min(abs(load[src] - load[dst]) // 2,
-                        tokens_of_expert_available_at(src, expert))
-            move_tokens(expert, src, dst, delta)
-            load[src] -= delta
-            load[dst] += delta
-```
+多个 Attention 副本共享 Expert Pool，就能提高 Expert GEMM 的 M 维度，而不需要每个 Attention 副本单独保存所有专家权重。
 
-论文讨论 CUDA、FPGA 及专用 On-die Engine 三种实现路径。**硬件 On-die 结果不能直接当作现有 GPU CUDA Kernel 的端到端吞吐提升。**
+从 Roofline 的角度理解，若一次 BF16 GEMM 的输入为 $b\times h$、权重为 $h\times d$，暂时只考虑权重读取，则算术强度近似为：
 
-### 2.5 实验结果：低开销求解能恢复多少 GPU 利用率？
+$$
+I\approx\frac{2bhd}{2hd}=b\quad\mathrm{FLOP/byte}.
+$$
 
-**实验设置。** 作者从 Qwen3-30B-A3B、OLMoE-1B-7B 和 Qwen1.5-MoE-A2.7B 提取 GSM8K、WildChat 的 Decode 路由记录。主要测试 EP8/16/32/64，较小模型仅测试其支持的规模。比较 No Balancing、静态 EPLB、GPU LPLB、CPU LP 及 Relief 的 CUDA、FPGA、专用芯片三种实现。核心评价指标为相对于零开销逐步最优解的 Effective Utilization：这些结果基于路由回放、求解器实测及硬件评估，并非完整在线服务的 Tokens/s 实测。
+当 $b$ 很小时，GEMM 即使 FLOPs 很少，也可能主要在等待权重读取；增大 $b$ 能让同一份权重参与更多计算，提高计算单元利用率。真实 GEMM 还受到激活、中间结果、量化、Tile Padding 等影响，因此不能把上式当作准确的执行时间模型。
 
-**（1）均衡结果接近最优，还必须把求解时间算进去。**
+这就是为什么 AF 分离不是简单地把算子放到另一张 GPU：**它改变了专家接收 Token 的规模，使原来受访存限制的计算有机会转向更高的计算利用率。**
 
-![图 7：Relief 原文 Figure 7](/assets/posts/moe-ep-four-papers-2026/relief/figure-07-effective-utilization.png)
+### 2.4 算法如何对应问题：Ping-Pong 流水线、部署搜索与 M2N 通信
 
-**图 7｜求解成本决定动态调度是否划算（Relief 原文 Figure 7）** 横轴表示原始 MoE 层耗时，纵轴是考虑求解时间后的有效利用率，不同子图对应不同 EP 规模。当层本身很短时，精确 LP 即使获得更均衡的结果，也可能因为求解过慢而输给静态方案；Relief 的轻量求解在这些区域更有优势。专用芯片评估中，相对静态放置最多恢复 **37.3 个百分点**的有效利用率；该数值不是 GPU 端到端吞吐增幅。
+**（1）Ping-Pong Pipeline：解决两类 GPU 轮流空闲的问题。**
 
-**（2）并行规模增大后，精确 LP 的开销成为额外瓶颈。**
+如果只有一个 Batch，Attention 执行时 Expert Pool 空闲，Expert 执行时 Attention Pool 又空闲。直接拆分会让利用率进一步下降。
 
-![图 8：Relief 原文 Figure 9](/assets/posts/moe-ep-four-papers-2026/relief/figure-09-solver-scalability.png)
+作者将请求切分成多个 Microbatch，让不同 Microbatch 分别占用 Attention、A2E 通信、Expert 和 E2A 通信阶段。
 
-**图 8｜Relief 与 LP 的可扩展性对比（Relief 原文 Figure 9）** 左图比较求解时间，右图比较求解器工作内存。精确 LP 的工作内存随 Rank 数平方增长，超过 GPU 共享内存容量后不能直接启动；Relief 的固定功能实现随 EP 规模增加，求解时间变化较小。
+![图 7：MegaScale-Infer 原文 Figure 4](/assets/posts/moe-ep-four-papers-2026/megascale-infer/figure-04-ping-pong-pipeline.png)
 
-| 指标 | 论文报告 |
-|---|---|
-| GPU 精确 LP | 约 100 μs 量级；大 EP 下受共享内存限制 |
-| Relief CUDA 求解器 | 代表性结果约 13–26 μs |
-| Relief 专用芯片，固定 12 轮 | EP8/64 约 0.75/0.79 μs（硬件实现评估） |
-| 空间利用率 | 128 专家模型的 192 个层/规模组合中，190 个优于其他可部署方法 |
+**图 7｜四个 Microbatch 在两个模型层之间的乒乓执行（MegaScale-Infer 原文 Figure 4）** 四行分别表示 Attention、发往 Expert 的通信、Expert 计算和返回 Attention 的通信。横轴是时间。同一个 Microbatch 必须等上一层 Expert 结果返回才能进入下一层，但另一组请求可以利用这段时间执行 Attention。这将原本的等待时间转变为其他请求的计算时间。
 
-**结论。** Relief 证明了快而近似的求解器可以比慢而精确的求解器更有用。但在两个 EP64 实验层上，默认放置反而更好：再好的 Token 分配也无法完全补救不合适的专家布局。这进一步说明 Placement 和 Dispatch 是两个不同的优化问题。
+论文用 $T_a$、$T_e$、$T_c$ 分别表示单个 Microbatch 的 Attention、Expert 和单向通信时间，令：
+
+$$
+T_f=\max(T_a,T_e).
+$$
+
+在论文的简化流水线模型中，充分利用流水线需要满足：
+
+$$
+T_a\approx T_e,\qquad T_c<T_f,\qquad mT_f\geq 2(T_f+T_c).
+$$
+
+其中 $m$ 是 Microbatch 数量。前两条分别约束计算阶段平衡、通信能够被计算覆盖；第三条要求有足够多的独立工作填满管线。
+
+例如，两侧计算各需要 100 μs，单向通信 30 μs，按上述条件至少需要 3 个 Microbatch。如果通信变成 80 μs，则至少需要 4 个。这个计算只解释理想流水线的设计门槛，不意味着真实系统必然达到完全重叠。
+
+**（2）部署配置搜索：解决 Attention 和 Expert 速度不匹配的问题。**
+
+即使 Microbatch 数量足够，如果 Attention 比 Expert 快很多，Expert Pool 仍会成为瓶颈；反之，Expert Pool 将长期等待输入。因此作者将资源配置也纳入优化。
+
+搜索变量包括 Attention 与 Expert 的 TP、Attention 副本数、Microbatch 数及全局 Batch。论文基于算子 profiling、通信带宽和 KV Cache 容量建立预测模型，在时延 SLO 下搜索可容纳的 Batch，并选择单位硬件成本吞吐最高的方案。
+
+用简化的形式表达其目标：
+
+$$
+\max\frac{B/T_{\mathrm{total}}}{C_{\mathrm{attention}}+C_{\mathrm{expert}}}
+\quad\text{s.t.}\quad
+T_{\mathrm{iter}}\leq \mathrm{SLO},\quad
+M_{\mathrm{used}}\leq M_{\mathrm{available}}.
+$$
+
+这里的 $B$ 表示全局 Batch，$C$ 表示相应资源成本。关键在于同时选择资源比例和工作量，而非先固定机器数量、再独立调节 Batch。
+
+**（3）M2N 通信：解决每层跨节点交换的固定开销。**
+
+AF 分离把传统 EP 的同组 All-to-All 转化为两组设备之间的多对多交换。Attention 路由之后，Token 需要发给动态选中的专家；下一次跨层执行又需要取回结果。
+
+作者采用预注册 GPU Buffer、RDMA Write with Immediate、完成队列轮询及 CUDA Stream 控制，减少中间数据拷贝、通用通信组建立和同步开销。其目标是在每次消息不大的情况下缩短通信延迟，使 Ping-Pong Pipeline 有机会满足 $T_c<T_f$。
+
+三项设计的对应关系如下：
+
+| 原有问题 | 对应方法 | 解决机制 |
+|---|---|---|
+| 专家 Batch 小、权重复用不足 | AF 分离 | 汇集多个 Attention 副本的 Token |
+| 两侧计算互相等待 | Ping-Pong Pipeline | 用其他 Microbatch 填充等待时间 |
+| 两侧速度与资源价格不匹配 | 部署搜索与异构 GPU | 根据时延约束调整资源比例 |
+| 每层跨节点传输过重 | M2N 通信库 | 降低小消息固定开销与尾延迟 |
+
+### 2.5 实验结果：拆分架构到底增加了吞吐，还是只是增加通信？
+
+**实验设置。** 论文使用 Mixtral 8×22B（141B 参数）、DBRX（132B）与 Scaled-MoE（317B），比较 vLLM 和 TensorRT-LLM。在 8 台各含 8 张 80GB Ampere GPU 的同构集群及 H20/L40S 异构集群上评估；采用 BF16，生产负载的输入、输出长度中位数分别为 571、159 Token。Decode 的 TBT 目标为 150 ms。以下数据均来自正式版第 7 节。
+
+**（1）同构部署：Decode 吞吐明显增长，单 Token 延迟没有同步下降。**
+
+![图 8：MegaScale-Infer 原文 Figure 8](/assets/posts/moe-ep-four-papers-2026/megascale-infer/figure-08-homogeneous-serving-performance.png)
+
+**图 8｜同构 GPU 下的 Decode 吞吐、TBT 与端到端吞吐（MegaScale-Infer 原文 Figure 8）** 左图比较单卡 Decode 吞吐，中图比较生成两个 Token 之间的平均时间，右图把 Prefill 也计入整体吞吐。拆分显著提高 Decode 阶段的吞吐，但中图并没有出现同样幅度的延迟下降，右图的整体收益也更小。
+
+以 Scaled-MoE 为例，相对当时的 TensorRT-LLM 单卡 Decode 吞吐最高为 1.90×；相对该论文的 vLLM 基线为 7.11×（受到当时多节点基线实现限制）。把 Prefill 一并计入后，相对较强基线最高为 1.18×。因此不能将 Decode 的最高收益理解为整个请求加速 1.90×。
+
+**（2）异构部署：根据模块需求选择 GPU，比一味增加高端 GPU 更划算。**
+
+![图 9：MegaScale-Infer 原文 Figure 9](/assets/posts/moe-ep-four-papers-2026/megascale-infer/figure-09-heterogeneous-serving-performance.png)
+
+**图 9｜H20 与 L40S 异构部署的单位成本吞吐（MegaScale-Infer 原文 Figure 9）** Attention 采用显存与带宽性价比较高的 H20，Expert 采用计算性价比较高的 L40S。左图显示 Decode 的单位硬件成本吞吐提高，中图显示延迟仍处于相近范围，右图显示端到端成本效率的改善。
+
+| 异构实验指标 | 相对 H20 上 TensorRT-LLM 等基线的论文结果 |
+|---|---:|
+| Decode 单位硬件成本吞吐 | 最高 1.86×（TensorRT-LLM） |
+| 包含 Prefill 的单位成本吞吐 | 最高 1.66× |
+| Decode 单位功耗吞吐 | 最高 1.80× |
+| 端到端单位功耗吞吐 | 最高 1.72× |
+
+成本结果依赖论文采用的 GPU 价格与网络配置，不能直接套用其他采购价格或云服务价格。
+
+**（3）通信库是否足够快：小消息和尾延迟是 AF 分离能否成立的前提。**
+
+![图 10：MegaScale-Infer 原文 Figure 11](/assets/posts/moe-ep-four-papers-2026/megascale-infer/figure-11-m2n-communication-performance.png)
+
+**图 10｜M2N 在不同消息大小下的性能（MegaScale-Infer 原文 Figure 11）** 从左到右分别是中位延迟、P99 延迟和吞吐，蓝线表示定制 M2N，橙线表示 NCCL。在消息较小时，降低固定开销的效果最明显；随消息变大，双方吞吐逐渐逼近带宽上限。在 256 KB 的典型消息下，作者报告中位延迟降低 68.2%、P99 降低 92.9%、吞吐提高 4.2×。这些是通信微基准结果，不是整个模型的加速比。
+
+**（4）流水线是不是切得越细越好？**
+
+![图 11：MegaScale-Infer 原文 Figure 14](/assets/posts/moe-ep-four-papers-2026/megascale-infer/figure-14-microbatch-pipeline-ablation.png)
+
+**图 11｜不同 Microbatch 数量下的 Decode 吞吐（MegaScale-Infer 原文 Figure 14）** 从 1 个 Microbatch 增加至 2 个后，两类计算池可以同时处理不同请求；增加到 3 个时，又能覆盖更多通信时间。继续增加到 4 个的收益已经较小。该消融固定每个 Microbatch 的大小，并非固定总 Batch。
+
+![图 12：MegaScale-Infer 原文 Figure 15](/assets/posts/moe-ep-four-papers-2026/megascale-infer/figure-15-attention-dp-scaling.png)
+
+**图 12｜Attention DP 数量对 DBRX 推理性能的影响（MegaScale-Infer 原文 Figure 15）** 左图为单 Token 延迟，右图为单卡吞吐。当 Attention 副本较少时，Expert Pool 等待 Attention 输出；DP 增至 8 时吞吐达到峰值；继续增至 12 或 16，Expert 侧成为瓶颈，延迟上升、单卡吞吐反而下降。
+
+**实验结论。** 该工作最重要的证据不是孤立的通信加速数字，而是 Figure 14、15 展示的资源平衡关系：AF 分离只有在两侧工作量、Microbatch 数和通信延迟相匹配时才具有优势。新架构需要一套新的部署规划逻辑才能充分发挥作用。
 
 ### 2.6 现有局限与值得进一步研究的问题
 
-**适用边界/研究判断**：Relief 的低成本来自简洁的 Token 负载代理和固定副本关系。对于冷专家，把 Token 平分到两个副本可能引入额外权重装载；对于不同 GEMM 形状，Token 数相等也未必耗时相等。这正是与 TEMPO 产生的研究张力。
+**作者讨论的局限与部署经验。** AF 分离的新增通信不能消除单个 Microbatch 的数据依赖，流水线主要改善整体吞吐，而非直接降低每个请求的延迟（§7.2）。同构实验在计算受限的 Prefill 上没有明显收益。论文也讨论了不同专家负载和消息粒度对执行方式的影响（§5、§6、§8）。
 
-**潜在创新**：保留 Relief 的低开销边松弛，但让每条边只选择有利于真实 Critical Path 的动作，例如 `不动 / 搬半差 / 搬至 GEMM Tile 边界`。是否有效必须对比 Relief、TEMPO、LPLB 和在线 Oracle，并把 Planner 时间算进 TPOT。
+**潜在方向一：动态负载下的 AF Resource Rebalancing。** 原论文在给定负载参数后搜索部署配置，但服务中的上下文长度、活跃请求数与输出速度会动态变化。Attention 的访存时间与 Expert 的实际计算量并不会等比例变化。可以研究何时需要改变两侧分配的执行资源，以及如何控制重配置和 KV Cache 迁移开销。实验应先证明固定配置在真实非稳态负载下出现稳定的吞吐损失或 SLO 违约，再验证动态方案能否弥补。
 
----
+**潜在方向二：异步流水线中的专家拖尾。** 当某个 Microbatch 的热点专家形成 Straggler 时，Attention Pool 可能没有按计划收到结果，原本能隐藏的通信窗口也随之失效。这里真正值得研究的是 Token-to-Replica 分配如何影响整个跨池流水线，而不只是某一张 GPU 的 GEMM 耗时。可将 TEMPO 的成本模型作为局部执行基线，比较单层 makespan 最优与全流水线吞吐最优是否存在系统性的差异。
 
-## 3. MegaFlux：既然 Token 不够平衡，能不能直接把专家搬过去？
-
-**论文**：[Skew-Resilient MoE Megakernels via Pipelined Expert Replication](https://arxiv.org/abs/2610.00671) · [PDF](https://arxiv.org/pdf/2610.00671)  
-**作者**：Jianzhu Yao、Siva Kumar Sastry Hari、Vignesh Balaji、Sana Damani、Insu Jang、Pramod Viswanath、Christos Kozyrakis。  
-**机构**：Princeton University × NVIDIA。**开源状况**：未核实独立完整实现；可参考 [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) 的公开 MoE 基础实现。
-
-### 3.1 研究背景与问题定义：已有专家副本无法消除热点怎么办？
-
-TEMPO 和 Relief 可以把 Token 重新分给**已有副本**，但如果热点专家只在一块 GPU 上，就没有更多分配自由度。另一种方法是临时复制这个专家的权重，在空闲 GPU 上增加一个副本。
-
-新的问题也随之产生：**复制权重需要显存、互联带宽和同步时间**。如果必须等待整个专家权重复制完成才能开始 GEMM，负载分配虽然更平衡，端到端反而可能更慢。
-
-**MegaFlux 要解决的问题**是：如何把临时专家复制本身纳入 MoE 的实际执行流水线，使复制能够被计算隐藏？
-
-### 3.2 核心算法：输入、输出与基本机制
-
-**一句话：MegaFlux 允许本轮把热点专家权重复制到其他 GPU，然后通过持久化 Megakernel 边搬权重边算，让复制尽量不增加总延迟。**
-
-它与 TEMPO/Relief 的最大不同是：**前两者假设已有副本放置不变；MegaFlux 允许新建物理专家副本。** 这改变了优化的可行域。
-
-### 3.3 核心 Insight：为什么旧方法在这里失效
-
-一个专家 FFN 可以粗略表示为：
-
-$$
-Z = X W_1,\qquad H = \sigma(Z),\qquad Y = H W_2.
-$$
-
-执行第一段 FC1 只需要 `X` 和 `W1`；第二段 FC2 才需要 `W2`。
-
-![图 9：MegaFlux 原文 Figure 2](/assets/posts/moe-ep-four-papers-2026/megaflux/figure-02-expert-replication-pipeline.png)
-
-**图 9｜专家权重的复制可以和专家计算同时进行（MegaFlux 原文 Figure 2）** 左侧比较固定放置与 MegaFlux：固定放置的热点 GPU 很忙、另一块 GPU 空闲；MegaFlux 把部分 Token 和专家权重搬到空闲 GPU，并让先到达的权重立即参与计算。右侧说明训练时梯度归并也能与其他计算重叠。
-
-常规动态复制很容易写成：
-
-```text
-Copy W1 + W2 → Barrier → FC1 → FC2
-```
-
-MegaFlux 将它转为：
-
-```text
-Copy W1 ──→ FC1 ──────→ FC2
-          Copy W2 ────→ ↑
-```
-
-**核心不只是异步 memcpy**，而是调整 Kernel 中的 Producer/Consumer 依赖，使传输和计算有真实可重叠的窗口。
-
-### 3.4 算法如何对应问题：逐步解决什么
-
-1. **分块**：将属于每个专家的 Token 切成大小可控的 Tile，以减少随意拆分导致的 Padding。
-2. **在线规划**：根据当前每个专家的 Token Tile 数以及可用副本预算，决定哪些专家要复制、哪些 GPU 执行其 Token。
-3. **内存预算**：每卡只能拥有有限新增副本，限制额外权重带来的 HBM 占用。
-4. **Persistent Kernel**：设备端执行器管理 Token Tile、权重到达和 FC1/FC2 Readiness，而不是为每一步单独引入 CPU/GPU 往返调度。
-5. **训练扩展**：如果 Backward 在多张卡上生成梯度，还必须把梯度归并到正确 Owner；该部分是论文额外贡献，不能误认为它一定提升 Serving。
-
-```python
-# 仅用于解释机制，不是作者源码
-plan = choose_replica_and_token_tile_plan(router_counts, gpu_budget)
-for expert_tile in persistent_executor(plan):
-    await_ready(expert_tile.inputs, expert_tile.W1)
-    run_fc1(expert_tile)           # W2 仍可继续传输
-    await_ready(expert_tile.W2)
-    run_fc2(expert_tile)
-    return_weighted_output(expert_tile)
-```
-
-### 3.5 实验结果：负载均衡与权重传输流水线分别带来多少收益？
-
-**实验设置。** 8×B200（单个 NVLink 域，EP8），64/128/256 个专家，Top-8，25% 额外专家副本容量；每个 Rank 输入 1K–64K Token。前向采用 MXFP4 权重、MXFP8 激活。微基准保留真实 Trace 的路由负载分布，同时使用合成权重与激活，以便控制变量。主要基线是同一个 MegaMoE Megakernel 的固定专家放置版本。
-
-**（1）动态复制的收益有多大，取决于路由有多偏斜。**
-
-![图 10：MegaFlux 原文 Figure 3](/assets/posts/moe-ep-four-papers-2026/megaflux/figure-03-routing-skew-speedup.png)
-
-**图 10｜动态复制相对固定放置的性能（MegaFlux 原文 Figure 3）** 不同曲线对应专家数，子图对应不同路由分布。路由越不均匀、计算量越足以摊薄复制成本，通常收益越明显。在每个方向的 147 组配置中，前向和反向的几何平均加速比分别为 **1.45×、1.28×**，最高分别达 2.14×、2.64×；对于均匀路由，基本没有加速。
-
-**（2）同样的复制方案，为什么流水线执行更快？**
-
-![图 11：MegaFlux 原文 Figure 4](/assets/posts/moe-ep-four-papers-2026/megaflux/figure-04-replication-pipeline-ablation.png)
-
-**图 11｜拆分动态复制与流水线的贡献（MegaFlux 原文 Figure 4）** 两种复制方案使用相同的专家放置和 Token 分配计划，区别仅在于是否把复制操作与计算一起执行。这组消融说明提升既来自减少热点 GPU 的计算，也来自隐藏复制时间。相比独立执行复制，流水线进一步降低前向延迟最多 13.2%、反向最多 26.7%。作者估计前向隐藏了 56–76% 的权重传输成本。
-
-**（3）真实推理系统是否也有效？**
-
-论文将 MegaFlux 集成到 vLLM，在 8×B200 上用 DeepSeek-V4-Pro 对 160 条 LongBench-Pro Prompt 进行 Prefill 测试。原论文 Table 1 的中位数加速比如下：
-
-| Batch Size | 每 GPU 16K Prefill Chunk | 每 GPU 32K Prefill Chunk |
-|---:|---:|---:|
-| 8 | 1.128× | 1.133× |
-| 16 | 1.227× | 1.238× |
-| 32 | 1.165× | 1.260× |
-
-**结论。** MegaFlux 不只是用复制解决负载不均衡，还证明了复制带来的额外通信可以部分隐藏在 Megakernel 内。Prefill 的系统级收益为 **1.13–1.26×**；由于小 Batch 下规划和复制的固定成本占比更高，不能直接推出 Decode 也能获得相同收益。
-
-### 3.6 现有局限与值得进一步研究的问题
-
-**作者说明**：负载已经平衡时，复制往往不值得；某些小 Backward 负载会退化；跨 NVLink Domain 的复制仍需要新的设计；动态启停机制值得继续探索。
-
-**我的判断**：MegaFlux 的成功依赖权重传输可以被 FC1/FC2 或其他计算隐藏。对小 Batch Decode、慢速 RDMA、权重极大或已经饱和的 GPU，复制可能变成显著成本。
-
-**潜在创新**：建立能够判断 `保持现有副本 / 只调整 Token Split / 临时新建副本` 何者值得的成本模型。但不能只把传输字节数除以带宽，必须考虑**实际可以被隐藏的传输时间**。这一方向实现门槛高于固定 Placement 下的 Token 分配。
-
----
-
-## 4. OverlapAdvisor：通信和计算怎么重叠，没有万能答案
-
-**论文**：[Modeling and Adapting Computation–Communication Overlap for Distributed MoE Serving](https://arxiv.org/abs/2611.11857) · [PDF](https://arxiv.org/pdf/2611.11857)  
-**作者**：Chutong Ding、Kaixuan Zhang、Luping Wang、Shiyou Qian、Jian Cao 等。**机构**：Shanghai Jiao Tong University × Alibaba Group。  
-**代码**：论文报告在 SGLang / vLLM 进行验证；未核实完整独立公开仓库。
-
-### 4.1 研究背景与问题定义：通信重叠为什么没有万能方案？
-
-在分布式 MoE 中，Token Dispatch、Expert GEMM、Combine 构成相互依赖的工作链。不同推理框架提供不同的融合、分块和计算通信重叠方案，但**没有一种固定策略能同时适合所有 Token Shape、模型、并行度与互联设备**。
-
-**OverlapAdvisor 研究的问题**是：部署系统时如何以较低成本预测各个执行方案的真实延迟，进而选出合适的通信计算重叠策略？它的主要决定发生在启动/配置阶段，不等于在每个 Decode Step 动态切换。
-
-### 4.2 核心算法：输入、输出与基本机制
-
-**一句话：OverlapAdvisor 不强迫所有机器使用同一种 MoE Kernel，而是先预测不同计算通信重叠方式在当前部署配置下谁最快，然后在启动时选择。**
-
-注意它主要优化的是 **Backend/Overlap Strategy Selection**，不是逻辑 Router，也不是像 Relief 那样每步重新分 Token。
-
-### 4.3 核心 Insight：为什么旧方法在这里失效
-
-![图 12：OverlapAdvisor 原文 Figure 2](/assets/posts/moe-ep-four-papers-2026/overlapadvisor/figure-02-strategy-performance-comparison.png)
-
-**图 12｜没有一种通信—计算重叠策略在所有情况下都最快（OverlapAdvisor 原文 Figure 2）** 四个子图对应不同 GPU、模型及精度配置；横轴是处理的 Token 数，纵轴为相对最佳策略的性能（最佳为 100%）。不同颜色分别代表不同执行方案，最佳方案会随硬件和负载变化。
-
-考虑通信需要 80 μs、计算需要 100 μs：
-
-```text
-完全串行：80 + 100 = 180 μs
-理想完全重叠：max(80, 100) = 100 μs
-真实执行：往往介于二者之间（还可能存在额外的资源争用）
-```
-
-为什么不能直接认为 100 μs 就是正确结果？因为 Token Tile 必须到达后才能计算；Combine 又要等待 Expert 输出；通信 Warps、GEMM 和缓存访问可能互相争抢资源。不同的 Chunk Size 与执行后端还会改变这些依赖。
-
-### 4.4 算法如何对应问题：逐步解决什么
-
-![图 13：OverlapAdvisor 原文 Figure 3](/assets/posts/moe-ep-four-papers-2026/overlapadvisor/figure-03-system-architecture.png)
-
-**图 13｜OverlapAdvisor 的完整决策流程（OverlapAdvisor 原文 Figure 3）** 左侧输入模型、Token 数、GPU 与 EP 配置；中间先估算候选方案的通信和计算耗时，再挑选适合当前配置的执行策略；右侧将该策略交给 SGLang/vLLM 启动运行，并分析最终吞吐和延迟。
-
-**UPP（Unified Performance Predictor）**：建立分阶段性能模型，估计 Dispatch+Compute、Compute+Combine 等关键路径，结合少量真实测量校准有效带宽、GEMM 效率和同步开销。
-
-**CSA（Configuration-aware Strategy Adapter）**：根据模型、EP Degree、硬件、Prefill/Decode 比例等信息评估候选策略，选择预计耗时最小者。
-
-**SSL（Strategy Serving Launcher）**：将被选策略接入具体 Serving Engine 的启动、权重布局和 Kernel 执行路径。
-
-```python
-# 教学伪代码：主要为 Launch-time 选择
-for backend in available_moe_backends:
-    predicted[backend] = estimate_latency(backend, model_shape, topology, workload)
-start_serving_engine(backend=min(predicted, key=predicted.get))
-```
-
-**一个重要事实**：论文的核心策略选择发生在**启动/配置阶段**，不能把它理解为“每个 Decode Step 都动态选择后端”。
-
-### 4.5 实验结果：选择最合适的执行策略能带来多大收益？
-
-**实验设置。** 覆盖 A100、H20、H800、GB200 四种 GPU 平台，103 种真实模型配置（MoE Shape），Token 数 32–16K。Kernel 层比较 Comet、FlashMoE、Torch、DeepEP、MegaMoE、UniEP 等可运行的固定方案；系统层在 SGLang 和 vLLM 中比较 MegaMoE、UniEP、DeepEP，覆盖 Prefill/Decode 混合部署及 PD 分离。
-
-**（1）Kernel 性能：相对各平台最强的固定后端仍有收益。**
-
-![图 14：OverlapAdvisor 原文 Figure 6](/assets/posts/moe-ep-four-papers-2026/overlapadvisor/figure-06-kernel-speedup.png)
-
-**图 14｜自动选择策略与固定方案的对比（OverlapAdvisor 原文 Figure 6）** 不同柱子表示不同基线。如果选择始终固定的后端，它可能在部分模型形状上明显落后；OverlapAdvisor 根据当前部署配置挑选执行策略。相对各平台最强固定策略的平均加速为 1.16×，最高平台平均加速为 1.59×。但在 FP8、MegaMoE 已经表现很好的配置组中，平均收益只有约 2–3%。
-
-| 平台与配置组 | 最强固定基线 | Kernel 加速 |
-|---|---|---:|
-| A100，BF16 | Comet | 1.59× |
-| H20，BF16 | DeepEP-v1 | 1.15× |
-| H800，BF16 | DeepEP-v1 | 1.14× |
-| FP8 三个平台 | MegaMoE | 1.02–1.03× |
-
-**（2）端到端系统：策略选择收益依赖系统本来使用的后端。**
-
-![图 15：OverlapAdvisor 原文 Figure 8](/assets/posts/moe-ep-four-papers-2026/overlapadvisor/figure-08-serving-throughput.png)
-
-**图 15｜五种部署配置中的服务吞吐变化（OverlapAdvisor 原文 Figure 8）** 图中区分引擎、模型及部署方式，比对相同部署下固定后端与自动选择的吞吐量。相比本来已经很高效的 MegaMoE，平均增益有限；如果初始部署使用了不合适的 DeepEP 或 UniEP 策略，重新选择的价值更明显。
-
-| 固定系统基线 | 平均吞吐提升 | 最大吞吐提升 |
-|---|---:|---:|
-| MegaMoE | 1.78% | 9.28% |
-| UniEP | 4.57% | 9.95% |
-| DeepEP | 9.97% | 31.72% |
-
-性能预测模型的 MAPE 为 3.3–15.9%，启动时选择策略约需 6 μs；服务过程中不需要反复预测和调度。
-
-**结论。** OverlapAdvisor 证明了通信计算重叠需要针对具体模型和硬件选择，而不是使用固定的最优后端。它尤其擅长规避选错策略的性能损失，而非让所有成熟后端都提高 30%。该方法主要解决启动时的静态选择，尚未直接说明运行时频繁变化的 Batch 应如何处理。
-
-### 4.6 现有局限与值得进一步研究的问题
-
-**作者讨论的延伸**：多节点、细粒度 SM/Warp 资源争用、模型跨平台迁移与复杂执行路径的拟合仍值得加强。
-
-**我的判断**：模型和部署配置不变，不代表实时负载不变。连续批处理中的 Batch/Router Skew/Prefill–Decode 比例可以变化。但动态切换后端又要付出 CUDA Graph、权重排布、Workspace 或重新编译等成本。
-
-**潜在创新**：研究“什么时候值得从稳定的 Launch-time Backend 切换到在线策略”。需要把收益、切换代价与波动稳定性同时建模，和固定策略、Oracle、简单阈值策略比较。
-
----
-
-## 5. 四篇论文合在一起，我们真正学到了什么？
-
-| 对比维度 | TEMPO | Relief | MegaFlux | OverlapAdvisor |
-|---|---|---|---|---|
-| 先解决的难点 | **优化目标不准确** | **求解器太慢** | **现有副本不够、权重搬运昂贵** | **不同执行后端没有通用最优者** |
-| 核心技术 | 非线性 GPU Cost Model + 启发式 | 整数成对松弛 + Edge Coloring | 动态复制 + Megakernel Pipeline | 分阶段预测 + 策略选择 |
-| 能否创建新的专家副本 | 否 | 否 | **是** | 通常否 |
-| 决策时间尺度 | 后台异步更新 | **逐 Decode Step** | 当前 Kernel 执行阶段 | **启动阶段** |
-| 最重要局限 | 负载信息可能过时 | Token 均衡未必等于真实耗时均衡 | 复制是否划算取决于可隐藏通信 | 不直接处理实时变化与切换代价 |
-| 最值得学习的思想 | 真实 Makespan 优先于 Token 数 | 决策成本是算法成本的一部分 | 用细粒度依赖隐藏复制传输 | 策略选择本身需要成本模型 |
-
-### 5.1 推荐优先研究的问题：真正 Cost-aware 的逐步 Dispatch
-
-**研究问题**：可否在每个 Decode Step 中，以 Relief 级别的低开销，利用 TEMPO 级别的真实代价信号分配 Token，同时给出何时关闭调度的判断？
-
-**为什么可能有价值**：Relief 为快放弃了复杂目标，TEMPO 为准确选择后台异步规划；二者存在明确的 Accuracy–Latency Trade-off。
-
-**但这还不是论文贡献。** 必须在真实 GPU 上先证明一个“Relief Token 数更均匀，但耗时反而增加”的可复现实例，并证明现有 TEMPO 异步版本因为 Staleness 或规划粒度没有解决该反例。
-
-候选最低成本算法：
-
-```text
-对于一条有两个专家副本的 GPU 边：
-  候选 A：保持分配
-  候选 B：转移当前负载差的一半
-  候选 C：移动至 GEMM Tile Boundary
-  对候选预测 (GEMM + 额外同步 + 通信关键路径)
-  仅当节省超过规划和模型误差门槛时转移
-```
-
-需要 **LPLB / Relief / TEMPO / Static EPLB / Offline Oracle** 共同对照，所有方法的输出 Token 应完全一致。
-
-### 5.2 第二条研究线：跨时间尺度的 EP Execution Planning
-
-慢时间尺度选择 Replica Placement，较快时间尺度选择 Token Split，更快时间尺度决定 Communication/GEMM 的执行粒度。把它们串起来不是简单拼接，因为**改变专家副本、后端、分块大小，可能同时改变原先的最优解与调度成本**。
-
-适合作为下一阶段，但需要对 TEMPO、MegaFlux、OverlapAdvisor 给出系统性失效反例；否则容易只是已有方法的集成工程。
-
-### 5.3 实验设计与止损标准
-
-| 层次 | 必测指标 | 作用 |
-|---|---|---|
-| 路由 | 每层专家直方图、Top-K、跨 Step 自相关、偏斜分布 | 判断是否真的存在逐步动态优化机会 |
-| 计算 | Activated Expert Count、Grouped GEMM、M-Tile Padding | 复现 TEMPO 的非线性成本 |
-| 通信 | Dispatch、Combine、权重搬运、实际 Overlap | 判断何时 Network-bound |
-| 调度器 | Planner Latency、Staleness、CUDA Graph 兼容性 | 防止优化成本吃掉收益 |
-| 端到端 | Prefill TTFT、Decode TPOT、P95/P99、Tokens/s | 验证优化不是局部幻象 |
-
-
+以上是可验证的研究假设，并非已经确认的论文空白。需要与现有 AFD 社区实现、专家负载平衡方法及异步执行研究进一步查重。

@@ -1,6 +1,6 @@
 {
   "article": "moe-ep-four-papers-2026",
-  "description": "作者原论文配图。原文 Figure 编号用于文件名，正文图号按出现顺序连续编号。图片内容使用人工上传的 Git blob，未经重新编码或裁切。",
+  "description": "本篇精读仅包含 TEMPO 和 MegaScale-Infer。旧的三篇配图保留原文件，不在当前正文中引用。MegaScale-Infer 的目标文件待手工上传。",
   "figures": [
     {
       "article_figure": 1,
@@ -30,6 +30,72 @@
       "source": "https://arxiv.org/abs/2608.13057",
       "file": "tempo/figure-08-end-to-end-serving-performance.png"
     },
+    {
+      "article_figure": 5,
+      "paper": "MegaScale-Infer",
+      "original_figure": 1,
+      "source": "https://doi.org/10.1145/3718958.3750506",
+      "pdf_page": 2,
+      "file": "megascale-infer/figure-01-attention-ffn-utilization.png"
+    },
+    {
+      "article_figure": 6,
+      "paper": "MegaScale-Infer",
+      "original_figure": 3,
+      "source": "https://doi.org/10.1145/3718958.3750506",
+      "pdf_page": 4,
+      "file": "megascale-infer/figure-03-disaggregated-runtime-architecture.png"
+    },
+    {
+      "article_figure": 7,
+      "paper": "MegaScale-Infer",
+      "original_figure": 4,
+      "source": "https://doi.org/10.1145/3718958.3750506",
+      "pdf_page": 5,
+      "file": "megascale-infer/figure-04-ping-pong-pipeline.png"
+    },
+    {
+      "article_figure": 8,
+      "paper": "MegaScale-Infer",
+      "original_figure": 8,
+      "source": "https://doi.org/10.1145/3718958.3750506",
+      "pdf_page": 9,
+      "file": "megascale-infer/figure-08-homogeneous-serving-performance.png"
+    },
+    {
+      "article_figure": 9,
+      "paper": "MegaScale-Infer",
+      "original_figure": 9,
+      "source": "https://doi.org/10.1145/3718958.3750506",
+      "pdf_page": 10,
+      "file": "megascale-infer/figure-09-heterogeneous-serving-performance.png"
+    },
+    {
+      "article_figure": 10,
+      "paper": "MegaScale-Infer",
+      "original_figure": 11,
+      "source": "https://doi.org/10.1145/3718958.3750506",
+      "pdf_page": 11,
+      "file": "megascale-infer/figure-11-m2n-communication-performance.png"
+    },
+    {
+      "article_figure": 11,
+      "paper": "MegaScale-Infer",
+      "original_figure": 14,
+      "source": "https://doi.org/10.1145/3718958.3750506",
+      "pdf_page": 12,
+      "file": "megascale-infer/figure-14-microbatch-pipeline-ablation.png"
+    },
+    {
+      "article_figure": 12,
+      "paper": "MegaScale-Infer",
+      "original_figure": 15,
+      "source": "https://doi.org/10.1145/3718958.3750506",
+      "pdf_page": 12,
+      "file": "megascale-infer/figure-15-attention-dp-scaling.png"
+    }
+  ],
+  "archived_figures": [
     {
       "article_figure": 5,
       "paper": "Relief",
