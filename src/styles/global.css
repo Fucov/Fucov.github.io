@@ -94,3 +94,14 @@ html[data-theme="dark"] {
 :target {
   scroll-margin-block: 1rem;
 }
+
+/* SpecPilot's vector figures should fill the available reading column,
+   including on wide screens with the TOC collapsed. */
+#article img[src*="stargazerx0.github.io/specpilot-project-page/assets/figures/"] {
+  display: block;
+  width: 100% !important;
+  max-width: 100% !important;
+  height: auto !important;
+  margin-inline: auto;
+  object-fit: contain;
+}

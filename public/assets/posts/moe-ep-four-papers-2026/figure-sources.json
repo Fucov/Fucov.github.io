@@ -1,6 +1,6 @@
 {
   "article": "moe-ep-four-papers-2026",
-  "description": "MegaScale-Infer 使用仓库原图，SpecPilot 使用官方项目页 SVG 和视频。原 TEMPO 等历史图保留，不在当前正文引用。",
+  "description": "MegaScale-Infer 使用仓库原图，SpecPilot 使用官方项目页 SVG。原 TEMPO 等历史图保留，不在当前正文引用。",
   "figures": [
     {
       "article_figure": 1,
@@ -220,13 +220,6 @@
       "original_figure": 8,
       "source": "https://arxiv.org/abs/2608.13057",
       "file": "tempo/figure-08-end-to-end-serving-performance.png"
-    }
-  ],
-  "videos": [
-    {
-      "paper": "SpecPilot",
-      "source": "https://stargazerx0.github.io/specpilot-project-page/",
-      "url": "https://stargazerx0.github.io/specpilot-project-page/assets/videos/specpilot_overview.mp4?v=21"
     }
   ]
 }

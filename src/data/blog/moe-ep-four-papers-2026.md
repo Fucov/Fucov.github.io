@@ -204,8 +204,6 @@ AF 分离把传统 EP 的同组 All-to-All 转化为两组设备之间的多对�
 **作者**：Kunjun Li、Wenhao Chai、Yihao Liang（共同一作）、Yuezhou Hu、Shuyao Xu 等。  
 **机构**：UC Berkeley、Princeton University、Stanford University、NVIDIA。2026 年 11 月预印本。
 
-<video controls playsinline preload="metadata" poster="https://stargazerx0.github.io/specpilot-project-page/assets/videos/specpilot_poster.jpg?v=8" style="display:block;width:100%;max-width:100%;height:auto;margin:1.5rem auto;border-radius:8px;" src="https://stargazerx0.github.io/specpilot-project-page/assets/videos/specpilot_overview.mp4?v=21"><a href="https://stargazerx0.github.io/specpilot-project-page/assets/videos/specpilot_overview.mp4?v=21">观看官方介绍视频</a></video>
-
 ### 2.1 研究背景与问题定义：为什么投机解码已经很快，却仍有如此大的优化空间？
 
 普通自回归解码（AR）每次执行 Target Model 生成一个 Token。对于低并发的大模型，GPU 大量时间花在从 HBM 读取权重上。投机解码先由较小的 Draft Model 提出若干候选，再由 Target 一次验证多个位置。如果候选正确，一次读取权重就能产生多个输出 Token。
