@@ -1,37 +1,9 @@
 {
   "article": "moe-ep-four-papers-2026",
-  "description": "本篇精读仅包含 TEMPO 和 MegaScale-Infer。旧的三篇配图保留原文件，不在当前正文中引用。MegaScale-Infer 的目标文件待手工上传。",
+  "description": "MegaScale-Infer 使用仓库原图，SpecPilot 使用官方项目页 SVG 和视频。原 TEMPO 等历史图保留，不在当前正文引用。",
   "figures": [
     {
       "article_figure": 1,
-      "paper": "TEMPO",
-      "original_figure": 1,
-      "source": "https://arxiv.org/abs/2608.13057",
-      "file": "tempo/figure-01-routing-time-vs-token-balance.png"
-    },
-    {
-      "article_figure": 2,
-      "paper": "TEMPO",
-      "original_figure": 2,
-      "source": "https://arxiv.org/abs/2608.13057",
-      "file": "tempo/figure-02-expert-compute-cost.png"
-    },
-    {
-      "article_figure": 3,
-      "paper": "TEMPO",
-      "original_figure": 6,
-      "source": "https://arxiv.org/abs/2608.13057",
-      "file": "tempo/figure-06-workload-performance-map.png"
-    },
-    {
-      "article_figure": 4,
-      "paper": "TEMPO",
-      "original_figure": 8,
-      "source": "https://arxiv.org/abs/2608.13057",
-      "file": "tempo/figure-08-end-to-end-serving-performance.png"
-    },
-    {
-      "article_figure": 5,
       "paper": "MegaScale-Infer",
       "original_figure": 1,
       "source": "https://doi.org/10.1145/3718958.3750506",
@@ -39,7 +11,7 @@
       "file": "megascale-infer/figure-01-attention-ffn-utilization.png"
     },
     {
-      "article_figure": 6,
+      "article_figure": 2,
       "paper": "MegaScale-Infer",
       "original_figure": 3,
       "source": "https://doi.org/10.1145/3718958.3750506",
@@ -47,7 +19,7 @@
       "file": "megascale-infer/figure-03-disaggregated-runtime-architecture.png"
     },
     {
-      "article_figure": 7,
+      "article_figure": 3,
       "paper": "MegaScale-Infer",
       "original_figure": 4,
       "source": "https://doi.org/10.1145/3718958.3750506",
@@ -55,7 +27,7 @@
       "file": "megascale-infer/figure-04-ping-pong-pipeline.png"
     },
     {
-      "article_figure": 8,
+      "article_figure": 4,
       "paper": "MegaScale-Infer",
       "original_figure": 8,
       "source": "https://doi.org/10.1145/3718958.3750506",
@@ -63,7 +35,7 @@
       "file": "megascale-infer/figure-08-homogeneous-serving-performance.png"
     },
     {
-      "article_figure": 9,
+      "article_figure": 5,
       "paper": "MegaScale-Infer",
       "original_figure": 9,
       "source": "https://doi.org/10.1145/3718958.3750506",
@@ -71,7 +43,7 @@
       "file": "megascale-infer/figure-09-heterogeneous-serving-performance.png"
     },
     {
-      "article_figure": 10,
+      "article_figure": 6,
       "paper": "MegaScale-Infer",
       "original_figure": 11,
       "source": "https://doi.org/10.1145/3718958.3750506",
@@ -79,7 +51,7 @@
       "file": "megascale-infer/figure-11-m2n-communication-performance.png"
     },
     {
-      "article_figure": 11,
+      "article_figure": 7,
       "paper": "MegaScale-Infer",
       "original_figure": 14,
       "source": "https://doi.org/10.1145/3718958.3750506",
@@ -87,12 +59,60 @@
       "file": "megascale-infer/figure-14-microbatch-pipeline-ablation.png"
     },
     {
-      "article_figure": 12,
+      "article_figure": 8,
       "paper": "MegaScale-Infer",
       "original_figure": 15,
       "source": "https://doi.org/10.1145/3718958.3750506",
       "pdf_page": 12,
       "file": "megascale-infer/figure-15-attention-dp-scaling.png"
+    },
+    {
+      "article_figure": 9,
+      "paper": "SpecPilot",
+      "source": "https://stargazerx0.github.io/specpilot-project-page/",
+      "file_url": "https://stargazerx0.github.io/specpilot-project-page/assets/figures/fig_motiv.svg"
+    },
+    {
+      "article_figure": 10,
+      "paper": "SpecPilot",
+      "source": "https://stargazerx0.github.io/specpilot-project-page/",
+      "file_url": "https://stargazerx0.github.io/specpilot-project-page/assets/figures/fig_agent.svg"
+    },
+    {
+      "article_figure": 11,
+      "paper": "SpecPilot",
+      "source": "https://stargazerx0.github.io/specpilot-project-page/",
+      "file_url": "https://stargazerx0.github.io/specpilot-project-page/assets/figures/fig3_w12.svg"
+    },
+    {
+      "article_figure": 12,
+      "paper": "SpecPilot",
+      "source": "https://stargazerx0.github.io/specpilot-project-page/",
+      "file_url": "https://stargazerx0.github.io/specpilot-project-page/assets/figures/fig_tree_tlv.svg"
+    },
+    {
+      "article_figure": 13,
+      "paper": "SpecPilot",
+      "source": "https://stargazerx0.github.io/specpilot-project-page/",
+      "file_url": "https://stargazerx0.github.io/specpilot-project-page/assets/figures/fig_forcing.svg"
+    },
+    {
+      "article_figure": 14,
+      "paper": "SpecPilot",
+      "source": "https://stargazerx0.github.io/specpilot-project-page/",
+      "file_url": "https://stargazerx0.github.io/specpilot-project-page/assets/figures/fig1_speedup_wide.svg"
+    },
+    {
+      "article_figure": 15,
+      "paper": "SpecPilot",
+      "source": "https://stargazerx0.github.io/specpilot-project-page/",
+      "file_url": "https://stargazerx0.github.io/specpilot-project-page/assets/figures/fig_evolution.svg"
+    },
+    {
+      "article_figure": 16,
+      "paper": "SpecPilot",
+      "source": "https://stargazerx0.github.io/specpilot-project-page/",
+      "file_url": "https://stargazerx0.github.io/specpilot-project-page/assets/figures/fig_w12.svg"
     }
   ],
   "archived_figures": [
@@ -172,6 +192,41 @@
       "original_figure": 8,
       "source": "https://arxiv.org/abs/2611.11857",
       "file": "overlapadvisor/figure-08-serving-throughput.png"
+    },
+    {
+      "article_figure": 1,
+      "paper": "TEMPO",
+      "original_figure": 1,
+      "source": "https://arxiv.org/abs/2608.13057",
+      "file": "tempo/figure-01-routing-time-vs-token-balance.png"
+    },
+    {
+      "article_figure": 2,
+      "paper": "TEMPO",
+      "original_figure": 2,
+      "source": "https://arxiv.org/abs/2608.13057",
+      "file": "tempo/figure-02-expert-compute-cost.png"
+    },
+    {
+      "article_figure": 3,
+      "paper": "TEMPO",
+      "original_figure": 6,
+      "source": "https://arxiv.org/abs/2608.13057",
+      "file": "tempo/figure-06-workload-performance-map.png"
+    },
+    {
+      "article_figure": 4,
+      "paper": "TEMPO",
+      "original_figure": 8,
+      "source": "https://arxiv.org/abs/2608.13057",
+      "file": "tempo/figure-08-end-to-end-serving-performance.png"
+    }
+  ],
+  "videos": [
+    {
+      "paper": "SpecPilot",
+      "source": "https://stargazerx0.github.io/specpilot-project-page/",
+      "url": "https://stargazerx0.github.io/specpilot-project-page/assets/videos/specpilot_overview.mp4?v=21"
     }
   ]
 }
