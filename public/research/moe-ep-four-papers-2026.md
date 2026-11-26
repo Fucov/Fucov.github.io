@@ -284,27 +284,13 @@ W12 的部分编码可以构成低精度的 8-bit View，不需要另外常驻�
 
 核心是将精确权重读取的开销摊销到更长的有效输出，而不是让近似模型决定最终 Token。如果 Q Pass 的预测不正确，仍由精确验证决定合法接受前缀。
 
-**（4）Batched Serving：根据并发状态限制验证成本。**
-
-当并发增加时，继续扩大树和增加一次 Q Pass 可能让计算超出原本可隐藏的时间。Agent 因此发现共享节点预算、按近期接受长度调整 Draft 深度、在合适的调度条件下混合新 Prompt 与 Verify 等机制。官方报告在 FP8 Batched Target 上某种 24 节点树使性能下降 14.9%，BF16 Batched 配置中的 TLV 下降 13%。
-
-**（5）Token Forcing 与经验复用：保证优化没有走偏。**
-
-![图 13：逐 Token 正确性检测](https://stargazerx0.github.io/specpilot-project-page/assets/figures/fig_forcing.svg)
-
-**图 13｜Token Forcing 能识别任务准确率看不出的错误（官方项目图）** 柱状图比较正常优化与人为注入 Logit 偏差的系统，误差线给出置信区间，虚线表示作者采用的拒绝阈值。
-
-将优化系统输出的前缀重新送入原版 Target，逐 Token 比较 scorer 的 argmax。原版系统本身受浮点舍入影响也存在少量不一致，因此作者设置相对原版的统计阈值，并单独检查无法解释的大 Margin 错误。测试中正常系统的 mismatch rate 与 stock 接近，而错误系统约达 2.0% 和 2.4%。
-
-性能实验同样设置晋升门槛：配对收益的 95% 置信下界必须超过 1% 加两倍基线测量噪声。成功机制被保存成可重放、带依赖关系的代码差异，而不是仅保留自然语言建议。官方项目页报告积累了 140 条经验记录。
-
 ### 2.5 实验结果：自主优化能否持续超过人工实现？
 
 **实验设置。** 论文与项目页报告使用 SGLang，在单张 H100 SXM5 或 RTX PRO 6000 Blackwell 上评估。任务包括 GSM8K、MATH500、HumanEval、MBPP、MT-Bench；采用 greedy 解码。Stock 表示针对当前环境调优后的原版 Drafter 与引擎，AR 表示关闭投机解码的参照。下表采用官方项目页公布的八组结果。
 
-![图 14：单请求投机解码相对于 AR 的加速](https://stargazerx0.github.io/specpilot-project-page/assets/figures/fig1_speedup_wide.svg)
+![图 13：单请求投机解码相对于 AR 的加速](https://stargazerx0.github.io/specpilot-project-page/assets/figures/fig1_speedup_wide.svg)
 
-**图 14｜单请求条件下的整体加速（官方项目图）** 每组柱子比较相同部署的 Stock 和 SpecPilot 相对 AR 的加速比。四组单请求配置均超过 Stock 的两倍速度提升水平；这里的 10.87× 是相对 AR，并不是相对 Stock。
+**图 13｜单请求条件下的整体加速（官方项目图）** 每组柱子比较相同部署的 Stock 和 SpecPilot 相对 AR 的加速比。四组单请求配置均超过 Stock 的两倍速度提升水平；这里的 10.87× 是相对 AR，并不是相对 Stock。
 
 | GPU / 场景 | 模型与 Drafter | Stock / AR | SpecPilot / AR | 封存测试相对 Stock |
 |---|---|---:|---:|---:|
@@ -319,13 +305,9 @@ W12 的部分编码可以构成低精度的 8-bit View，不需要另外常驻�
 
 AR 比较使用开发请求上的交替实验，封存收益使用独立未见请求，不能直接将前两列相除当作最后一列的精确值。官方项目页还报告，相比加入 DDTree 的更强基线，H100 上有 1.84× 的提升。
 
-![图 15：三轮自主优化的吞吐演进](https://stargazerx0.github.io/specpilot-project-page/assets/figures/fig_evolution.svg)
+![图 14：W12 在普通 AR 解码中的收益](https://stargazerx0.github.io/specpilot-project-page/assets/figures/fig_w12.svg)
 
-**图 15｜不同优化轮次的累积收益（官方项目图）** 横轴是优化进程，纵轴是单请求 Qwen3.8-27B 在 H100 上的生成吞吐。标记点对应被采纳的新机制；这张图体现的是多次探索与集成后获得的累积结果，而非一个补丁的独立贡献。
-
-![图 16：W12 在普通 AR 解码中的收益](https://stargazerx0.github.io/specpilot-project-page/assets/figures/fig_w12.svg)
-
-**图 16｜W12 的独立性能价值（官方项目图）** 三个子图分别比较普通 AR 解码速度、权重占用以及 W12 GEMM 相对 cuBLAS 的速度。项目报告四个 8B–30B 模型在无投机解码条件下，单请求提升 1.19–1.28×，32 请求提升 1.13–1.20×。Qwen3.8-27B 的投影 GEMM 在 1 行和 32 行时分别报告 1.19–1.47× 与 1.17–1.35× 的加速。
+**图 14｜W12 的独立性能价值（官方项目图）** 三个子图分别比较普通 AR 解码速度、权重占用以及 W12 GEMM 相对 cuBLAS 的速度。项目报告四个 8B–30B 模型在无投机解码条件下，单请求提升 1.19–1.28×，32 请求提升 1.13–1.20×。Qwen3.8-27B 的投影 GEMM 在 1 行和 32 行时分别报告 1.19–1.47× 与 1.17–1.35× 的加速。
 
 实验说明这种闭环既可以改进原有投机策略，也可以产生独立的底层机制；但是不同负载下被采纳的机制并不相同。不能把单请求最优配置直接作为高并发部署的默认配置。
 
